@@ -27,7 +27,6 @@ export default function App() {
   const [history, setHistory] = useState<GeneratedSong[]>([]);
   const [currentSong, setCurrentSong] = useState<GeneratedSong | null>(null);
   
-  // Replaced boolean isLoading with string status to show progress stages
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,34 +58,44 @@ export default function App() {
       // 1. Generate the Base Song
       const newSong = await generateSongAssets(inputs);
       
-      // 2. Run Deep Analysis automatically
-      setLoadingStatus('Deep Analysis (Gemini 3.0 Pro)...');
-      try {
-        const analysis = await analyzeGeneratedSong(newSong);
-        newSong.analysis = analysis;
-      } catch (analysisError) {
-        console.warn("Auto-analysis failed:", analysisError);
-        // Continue without analysis if it fails
-      }
-
-      // 3. Generate Variations automatically
-      setLoadingStatus('Dreaming Variations...');
-      try {
-        const variations = await generateSongVariations(newSong);
-        newSong.variations = variations;
-      } catch (varError) {
-        console.warn("Auto-variations failed:", varError);
-        // Continue without variations if it fails
-      }
-
-      // Save complete object
+      // IMMEDIATE UPDATE: Show the song to the user now
       setHistory(prev => [newSong, ...prev]);
       setCurrentSong(newSong);
+      
+      // 2. Run Deep Analysis in the background
+      triggerBackgroundAnalysis(newSong);
+
     } catch (err) {
       setError("Failed to generate song assets. Please check your API key and try again.");
       console.error(err);
     } finally {
       setLoadingStatus(null);
+    }
+  };
+
+  // Helper to run analysis and update state when done
+  const triggerBackgroundAnalysis = async (songToAnalyze: GeneratedSong) => {
+    try {
+      // Check if this is a V2/Revision and find parent for comparison
+      let parentLyrics: string | undefined;
+      
+      if (songToAnalyze.parentId) {
+          const parent = history.find(h => h.id === songToAnalyze.parentId);
+          if (parent) parentLyrics = parent.lyrics;
+      }
+
+      const analysis = await analyzeGeneratedSong(songToAnalyze, parentLyrics);
+      
+      // Update the song in history and current view
+      const updatedSong = { ...songToAnalyze, analysis };
+      
+      setHistory(prev => prev.map(s => s.id === songToAnalyze.id ? updatedSong : s));
+      
+      // Only update currentSong if the user is still looking at it
+      setCurrentSong(current => current?.id === songToAnalyze.id ? updatedSong : current);
+      
+    } catch (analysisError) {
+      console.warn("Background analysis failed:", analysisError);
     }
   };
 
@@ -97,22 +106,46 @@ export default function App() {
     setCurrentSong(updatedSong);
   };
 
-  const handleCreateVersion = (baseSong: GeneratedSong, newLyrics: string, technicalExplanation: string) => {
-    // Create a new V2 song entry
+  const handleCreateVersion = (
+    baseSong: GeneratedSong, 
+    newLyrics: string, 
+    technicalExplanation: string,
+    advancedLogic: boolean,
+    metaphorLogic: boolean
+  ) => {
+    // Determine version number
+    let versionNum = 2;
+    if (baseSong.title.includes('(V')) {
+        const match = baseSong.title.match(/\(V(\d+)\)/);
+        if (match) versionNum = parseInt(match[1]) + 1;
+    }
+
+    // 1. Create a new V2 song entry
     const newVersion: GeneratedSong = {
       ...baseSong,
       id: crypto.randomUUID(),
-      title: `${baseSong.title} (V2 - Deep Analysis)`,
+      parentId: baseSong.id, // Link to parent for comparison
+      title: baseSong.title.replace(/\s\(V\d+\)/, '') + ` (V${versionNum})`,
       createdAt: Date.now(),
       lyrics: newLyrics,
       technicalExplanation: technicalExplanation,
       // Clear analysis and variations as they apply to the old lyrics
       analysis: undefined,
-      variations: undefined
+      variations: undefined,
+      stylePrompt: baseSong.stylePrompt, 
+      coverImageBase64: baseSong.coverImageBase64, 
+      coverArtPrompt: baseSong.coverArtPrompt,
+      hasAdvancedLogic: advancedLogic,
+      hasMetaphorLogic: metaphorLogic,
+      negativePrompt: baseSong.negativePrompt
     };
 
+    // 2. Switch view immediately
     setHistory(prev => [newVersion, ...prev]);
     setCurrentSong(newVersion);
+
+    // 3. Trigger analysis for the NEW version immediately
+    triggerBackgroundAnalysis(newVersion);
   };
 
   const handleClearHistory = () => {
@@ -121,6 +154,11 @@ export default function App() {
       setCurrentSong(null);
     }
   };
+  
+  // Find parent song if available
+  const parentSong = currentSong?.parentId 
+    ? history.find(h => h.id === currentSong.parentId) 
+    : undefined;
 
   return (
     <div className="min-h-screen bg-suno-dark text-gray-100 font-sans selection:bg-suno-primary selection:text-white flex flex-col">
@@ -168,6 +206,7 @@ export default function App() {
           {currentSong ? (
             <ResultDisplay 
               song={currentSong} 
+              parentSong={parentSong}
               onUpdateSong={handleUpdateSong}
               onCreateVersion={handleCreateVersion}
             />

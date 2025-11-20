@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { SongInputs, GeneratedSong, StructureType, AnalysisResponse, SongAnalysis, SongVariation, InferredAttributes } from "../types";
+import { SongInputs, GeneratedSong, StructureType, AnalysisResponse, SongAnalysis, SongVariation, InferredAttributes, EvaluationResult, FIXED_SCORING_CATEGORIES } from "../types";
 
 const apiKey = process.env.API_KEY;
 
@@ -103,26 +103,27 @@ const SONG_ANALYSIS_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     overallScore: { type: Type.NUMBER, description: "Score out of 100." },
-    projectedScore: { type: Type.NUMBER, description: "Predicted score if all improvements are made." },
+    projectedScore: { type: Type.NUMBER, description: "Predicted score if all improvements are applied." },
     summary: { type: Type.STRING },
     scoreBreakdown: {
         type: Type.ARRAY,
         items: {
             type: Type.OBJECT,
             properties: {
-                category: { type: Type.STRING },
+                category: { type: Type.STRING, enum: FIXED_SCORING_CATEGORIES },
                 score: { type: Type.NUMBER },
                 reason: { type: Type.STRING }
-            }
+            },
+            required: ["category", "score", "reason"]
         }
     },
-    themeAnalysis: { type: Type.STRING, description: "Deep analysis of the core theme, metaphor usage, and emotional resonance." },
-    storyArc: { type: Type.STRING, description: "Analysis of the narrative progression from start to finish." },
+    themeAnalysis: { type: Type.STRING },
+    storyArc: { type: Type.STRING },
     sonicAnalysis: {
         type: Type.OBJECT,
         properties: {
-            phonetics: { type: Type.STRING, description: "Analysis of open vs closed vowels and mouthfeel." },
-            density: { type: Type.STRING, description: "Analysis of syllable density and contrast between sections." },
+            phonetics: { type: Type.STRING },
+            density: { type: Type.STRING },
             cinemaAudit: {
                 type: Type.OBJECT,
                 properties: {
@@ -143,12 +144,31 @@ const SONG_ANALYSIS_SCHEMA: Schema = {
         properties: {
           original: { type: Type.STRING },
           improved: { type: Type.STRING },
-          reason: { type: Type.STRING }
+          reason: { type: Type.STRING },
+          source: { type: Type.STRING, enum: ['AI', 'User'] }
         },
         required: ["original", "improved", "reason"]
       }
     },
-    commercialViability: { type: Type.STRING }
+    commercialViability: { type: Type.STRING },
+    comparisonReview: {
+        type: Type.OBJECT,
+        properties: {
+            summary: { type: Type.STRING },
+            improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
+            missedOpportunities: { type: Type.ARRAY, items: { type: Type.STRING } },
+            verdict: { type: Type.STRING, enum: ['Significant Upgrade', 'Marginal Improvement', 'Regression', 'Different Direction'] },
+            scoreDelta: { type: Type.NUMBER }
+        }
+    },
+    rewriteAdvice: {
+        type: Type.OBJECT,
+        properties: {
+            shouldUseAdvancedLogic: { type: Type.BOOLEAN },
+            shouldUseMetaphorLogic: { type: Type.BOOLEAN },
+            reasoning: { type: Type.STRING }
+        }
+    }
   },
   required: ["overallScore", "projectedScore", "summary", "scoreBreakdown", "themeAnalysis", "storyArc", "sonicAnalysis", "strengths", "weaknesses", "lineByLineImprovements", "commercialViability"]
 };
@@ -180,6 +200,16 @@ const REWRITE_SCHEMA: Schema = {
     technicalExplanation: { type: Type.STRING }
   },
   required: ["lyrics", "technicalExplanation"]
+};
+
+const EVALUATION_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    verdict: { type: Type.STRING, enum: ['Better', 'Worse', 'Neutral'] },
+    explanation: { type: Type.STRING },
+    scoreChange: { type: Type.NUMBER }
+  },
+  required: ["verdict", "explanation", "scoreChange"]
 };
 
 const ADVANCED_LYRIC_LOGIC_INSTRUCTIONS = `
@@ -287,6 +317,7 @@ You are an elite Suno v5 Prompt Engineer and Songwriter. Your goal is to generat
         *   *Stylistic:* [Rap], [Falsetto], [Operatic], [Robotic].
     *   **Production Effects:** [Radio Filter], [Telephone Effect], [Autotune], [Echo], [Delay].
     *   **Ad-libs:** Use parentheses for background vocals and call-and-response: (Ooh-yeah), (Echoing...), (Let's go!).
+    *   **CONSTRAINT:** Avoid repetitive use of the same ad-libs like "(Hold on...)" or "(Whispered)" at the end of every line/section unless it is a specific refrain. Vary the vocal coloring.
 3.  **Lyric Formatting:**
     *   **Rhythm:** Use line breaks to create pauses.
     *   **Phrasing:** Use commas, ellipses (...), and colons to control phrasing speed.
@@ -306,7 +337,6 @@ Generate a complete song structure and an Album Cover Prompt.
 
 export const generateSongAssets = async (inputs: SongInputs): Promise<GeneratedSong> => {
   try {
-    // Construct a style string that includes the manually selected instruments
     const instrumentString = inputs.instruments.length > 0 ? `Featured Instruments: ${inputs.instruments.join(', ')}.` : "";
     
     const prompt = `
@@ -335,7 +365,6 @@ export const generateSongAssets = async (inputs: SongInputs): Promise<GeneratedS
     `;
 
     // 1. Generate Text Content
-    // UPGRADED to gemini-3-pro-preview for superior creative output
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: [{ parts: [{ text: prompt }] }],
@@ -352,7 +381,6 @@ export const generateSongAssets = async (inputs: SongInputs): Promise<GeneratedS
 
     const rawSong = JSON.parse(text);
     
-    // Add IDs and timestamps here
     const generatedSong: GeneratedSong = {
       ...rawSong,
       id: crypto.randomUUID(),
@@ -458,7 +486,9 @@ export const inferAttributesFromReference = async (artist: string, song: string)
   return JSON.parse(response.text) as InferredAttributes;
 };
 
-export const analyzeGeneratedSong = async (song: GeneratedSong): Promise<SongAnalysis> => {
+export const analyzeGeneratedSong = async (song: GeneratedSong, parentLyrics?: string): Promise<SongAnalysis> => {
+  const isRevision = !!parentLyrics || song.title.includes("(V2") || song.title.includes("Revision");
+
   const prompt = `
     Act as a relentless, world-class music critic and producer. Analyze these song lyrics and concept.
     
@@ -467,10 +497,33 @@ export const analyzeGeneratedSong = async (song: GeneratedSong): Promise<SongAna
     Lyrics:
     ${song.lyrics}
 
+    ${isRevision && parentLyrics ? `
+    ### COMPARISON MODE (V2 vs Original)
+    This is a rewrite. You MUST compare it to the original version below.
+    
+    Original Lyrics:
+    ${parentLyrics}
+    
+    **Comparison Task:**
+    1. Identify what has improved (e.g., "Rhymes are no longer forced," "Added concrete furniture").
+    2. Identify what was lost or missed.
+    3. Issue a Verdict: Significant Upgrade, Marginal Improvement, Regression, or Different Direction.
+    4. Populate the 'comparisonReview' field. 
+    ` : 'NOTE: This is a fresh generation. Do NOT populate the comparisonReview field.'}
+
     Your Goal: Tear this song apart to rebuild it better. Use the following "Pro Level" metrics.
+    
+    **SCORING RULES:**
+    You must evaluate the song across these EXACT 6 categories. Do NOT invent other categories.
+    1. **Lyrical Originality**: Avoids clichés, uses fresh metaphors.
+    2. **Melodic & Phonetic Flow**: Rhythm, rhyme quality, singability (open vowels).
+    3. **Emotional Impact**: Does it make the listener feel something?
+    4. **Structure & Pacing**: Is the journey clear? Good contrast between sections?
+    5. **Commercial Potential**: Hookiness, radio-viability (or niche appeal).
+    6. **Thematic Cohesion**: Does the furniture/metaphor stay consistent?
 
     ### SECTION 1: CREATIVE AUDIT
-    1. **Score (0-100):** Rate it based on commercial potential, emotional impact, and cleverness.
+    1. **Score (0-100):** Rate it based on the categories above. ${isRevision ? "If it's a good rewrite, the score should be higher than the original." : ""}
     2. **Theme Check:** Is the theme clear? Is the message consistent? Analyze the central metaphor if present.
     3. **Story Arc:** Does it go somewhere? Does the bridge resolve the conflict?
     4. **Line Critique:** Find lines that are "flat", clichéd, or weak. Suggest specifically how to rewrite them.
@@ -491,19 +544,21 @@ export const analyzeGeneratedSong = async (song: GeneratedSong): Promise<SongAna
     * **List the Props:** Extract every physical object mentioned in the song.
     * *Score:* 0-3 Objects (F - Too Abstract), 4-6 (C - Average), 7+ (A - Immersive).
     
+    ### SECTION 3: REWRITE ADVICE
+    Should the next version use "Advanced Lyric Logic" (strict formatting) or "Metaphor Logic" (one central object)? Suggest yes/no and why.
+
     Provide a breakdown of why the score is what it is, and what the score WOULD be if the user applies your improvements.
   `;
 
-  // Using Gemini 3.0 Pro Preview for complex reasoning and analysis
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview", 
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
       responseSchema: SONG_ANALYSIS_SCHEMA,
-      systemInstruction: "You are a strict, high-standard music critic and audio engineer. Do not sugarcoat. Be specific.",
+      systemInstruction: "You are a strict, high-standard music critic and audio engineer. Do not sugarcoat. Be specific. Use the 6 Fixed Scoring Categories.",
       temperature: 0.8,
-      thinkingConfig: { thinkingBudget: 2048 } // Allocating budget for deep analysis
+      thinkingConfig: { thinkingBudget: 2048 } 
     }
   });
 
@@ -511,7 +566,11 @@ export const analyzeGeneratedSong = async (song: GeneratedSong): Promise<SongAna
   return JSON.parse(response.text) as SongAnalysis;
 };
 
-export const rewriteSongWithImprovements = async (song: GeneratedSong): Promise<GeneratedSong> => {
+export const rewriteSongWithImprovements = async (
+  song: GeneratedSong, 
+  useAdvancedLogic: boolean, 
+  useMetaphorLogic: boolean
+): Promise<GeneratedSong> => {
   if (!song.analysis) throw new Error("Analysis required before rewriting");
 
   const prompt = `
@@ -523,6 +582,16 @@ export const rewriteSongWithImprovements = async (song: GeneratedSong): Promise<
     Critique to Apply:
     ${JSON.stringify(song.analysis.lineByLineImprovements)}
     
+    MANDATORY REWRITE RULES:
+    1. **Fix the Errors:** Specifically apply the critique suggestions.
+    2. **Sanity Check - Rhymes:** NEVER rhyme a word with itself. Find a synonym or change the line structure.
+    3. **Sanity Check - Clichés:** If the analysis called something a cliché, REMOVE IT completely.
+    4. **Sanity Check - Phonetics:** Ensure chorus lines end on open vowels where requested.
+    5. **Variation:** Ensure ad-libs are not repetitive. Do NOT just repeat "(Hold on...)" or "(Whispered)". Use varied vocal directions.
+
+    ${useAdvancedLogic ? ADVANCED_LYRIC_LOGIC_INSTRUCTIONS : ''}
+    ${useMetaphorLogic ? CENTRAL_METAPHOR_INSTRUCTIONS : ''}
+
     Sonic Goals:
     - Fix phonetic issues (open vowels in chorus).
     - Fix density issues (ensure contrast).
@@ -537,8 +606,8 @@ export const rewriteSongWithImprovements = async (song: GeneratedSong): Promise<
     config: {
       responseMimeType: "application/json",
       responseSchema: REWRITE_SCHEMA,
-      systemInstruction: "You are an elite songwriter polishing a track for final release.",
-      temperature: 0.7
+      systemInstruction: "You are an elite songwriter polishing a track for final release. You are allergic to lazy rhymes and clichés.",
+      temperature: 0.85
     }
   });
 
@@ -548,8 +617,37 @@ export const rewriteSongWithImprovements = async (song: GeneratedSong): Promise<
   return {
     ...song,
     lyrics: result.lyrics,
-    technicalExplanation: result.technicalExplanation
+    technicalExplanation: result.technicalExplanation,
+    hasAdvancedLogic: useAdvancedLogic,
+    hasMetaphorLogic: useMetaphorLogic
   };
+};
+
+export const evaluateLineChange = async (originalLine: string, newLine: string, context: string): Promise<EvaluationResult> => {
+  const prompt = `
+    Evaluate this specific lyric change for a song with context: "${context}".
+
+    Original: "${originalLine}"
+    New: "${newLine}"
+
+    Task:
+    1. Did the edit improve the song? (Better / Worse / Neutral)
+    2. Why? (e.g. "Removed cliché", "Better rhythm", "Lost meaning")
+    3. Estimated Score Impact (-5 to +5)
+  `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: EVALUATION_SCHEMA,
+      temperature: 0.3
+    }
+  });
+
+  if (!response.text) throw new Error("Evaluation failed");
+  return JSON.parse(response.text) as EvaluationResult;
 };
 
 export const generateSongVariations = async (song: GeneratedSong): Promise<SongVariation[]> => {

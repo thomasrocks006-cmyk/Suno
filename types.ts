@@ -7,6 +7,23 @@ export enum StructureType {
   EXPERIMENTAL = 'Experimental/Progressive'
 }
 
+export type ScoringCategory = 
+  | 'Lyrical Originality'
+  | 'Melodic & Phonetic Flow'
+  | 'Emotional Impact'
+  | 'Structure & Pacing'
+  | 'Commercial Potential'
+  | 'Thematic Cohesion';
+
+export const FIXED_SCORING_CATEGORIES: ScoringCategory[] = [
+  'Lyrical Originality',
+  'Melodic & Phonetic Flow',
+  'Emotional Impact',
+  'Structure & Pacing',
+  'Commercial Potential',
+  'Thematic Cohesion'
+];
+
 export interface SongInputs {
   artistReference: string;
   songReference: string;
@@ -32,7 +49,7 @@ export interface InferredAttributes {
 }
 
 export interface ScoreComponent {
-  category: string;
+  category: ScoringCategory;
   score: number;
   reason: string;
 }
@@ -48,6 +65,20 @@ export interface SonicAnalysis {
   };
 }
 
+export interface ComparisonReview {
+  summary: string;
+  improvements: string[];
+  missedOpportunities: string[];
+  verdict: 'Significant Upgrade' | 'Marginal Improvement' | 'Regression' | 'Different Direction';
+  scoreDelta: number;
+}
+
+export interface RewriteAdvice {
+  shouldUseAdvancedLogic: boolean;
+  shouldUseMetaphorLogic: boolean;
+  reasoning: string;
+}
+
 export interface SongAnalysis {
   overallScore: number;
   projectedScore: number; // Score if improvements are applied
@@ -58,8 +89,11 @@ export interface SongAnalysis {
   sonicAnalysis: SonicAnalysis;
   strengths: string[];
   weaknesses: string[];
-  lineByLineImprovements: { original: string; improved: string; reason: string }[];
+  lineByLineImprovements: { original: string; improved: string; reason: string; source?: 'AI' | 'User' }[];
   commercialViability: string;
+  // New for V2+
+  comparisonReview?: ComparisonReview;
+  rewriteAdvice?: RewriteAdvice;
 }
 
 export interface SongVariation {
@@ -71,6 +105,7 @@ export interface SongVariation {
 
 export interface GeneratedSong {
   id: string;
+  parentId?: string; // Links to the song this was rewritten from
   createdAt: number;
   title: string;
   stylePrompt: string;
@@ -110,4 +145,10 @@ export interface AnalysisResponse {
     customInstructions?: FeedbackItem;
     syllablePattern?: FeedbackItem;
   };
+}
+
+export interface EvaluationResult {
+  verdict: 'Better' | 'Worse' | 'Neutral';
+  explanation: string;
+  scoreChange: number; // Estimated score change
 }

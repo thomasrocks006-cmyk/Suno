@@ -2,11 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { GeneratedSong, SongVariation, SongAnalysis } from '../types';
 import { analyzeGeneratedSong, generateSongVariations, rewriteSongWithImprovements } from '../services/geminiService';
+import { SmartLineEditor } from './SmartLineEditor';
+import { ComparisonView } from './ComparisonView';
 
 interface ResultDisplayProps {
   song: GeneratedSong;
+  parentSong?: GeneratedSong; // Passed from App.tsx
   onUpdateSong: (updatedSong: GeneratedSong) => void;
-  onCreateVersion: (baseSong: GeneratedSong, newLyrics: string, technicalExplanation: string) => void;
+  onCreateVersion: (baseSong: GeneratedSong, newLyrics: string, technicalExplanation: string, advancedLogic: boolean, metaphorLogic: boolean) => void;
 }
 
 type Tab = 'lyrics' | 'analysis' | 'variations';
@@ -65,22 +68,51 @@ const ProgressBar: React.FC<{ isRunning: boolean; label: string }> = ({ isRunnin
   );
 };
 
-export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong, onCreateVersion }) => {
+const CreativeForgeLoader = () => (
+    <div className="absolute inset-0 bg-suno-dark/95 z-50 flex flex-col items-center justify-center backdrop-blur-md">
+        <div className="relative w-32 h-32 mb-8">
+            <div className="absolute inset-0 rounded-full border-4 border-suno-primary/20 animate-[spin_10s_linear_infinite]"></div>
+            <div className="absolute inset-0 rounded-full border-t-4 border-suno-primary animate-[spin_3s_linear_infinite]"></div>
+            <div className="absolute inset-4 rounded-full border-4 border-suno-secondary/20 animate-[spin_8s_linear_infinite_reverse]"></div>
+            <div className="absolute inset-4 rounded-full border-t-4 border-suno-secondary animate-[spin_2s_linear_infinite_reverse]"></div>
+            <div className="absolute inset-0 flex items-center justify-center text-3xl">🎵</div>
+        </div>
+        <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-suno-primary to-suno-secondary mb-2">
+            Forging Version 2
+        </h3>
+        <p className="text-gray-400 text-sm animate-pulse">Applying Lyric Logic & Metaphor Anchors...</p>
+    </div>
+);
+
+export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, onUpdateSong, onCreateVersion }) => {
   const [activeTab, setActiveTab] = useState<Tab>('lyrics');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingVariations, setIsGeneratingVariations] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
+  
+  // Smart Editor State
+  const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
+  const [isSmartEditorOpen, setIsSmartEditorOpen] = useState(false);
+  const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+
+  // Rewrite Options
+  const [useAdvancedLogic, setUseAdvancedLogic] = useState(song.hasAdvancedLogic);
+  const [useMetaphorLogic, setUseMetaphorLogic] = useState(song.hasMetaphorLogic);
+
+  useEffect(() => {
+      // Update toggles if advice comes in
+      if (song.analysis?.rewriteAdvice) {
+          setUseAdvancedLogic(song.analysis.rewriteAdvice.shouldUseAdvancedLogic);
+          setUseMetaphorLogic(song.analysis.rewriteAdvice.shouldUseMetaphorLogic);
+      }
+  }, [song.analysis]);
 
   const handleAnalyze = async () => {
     if (song.analysis) return;
-    setIsAnalyzing(true);
     try {
-      const analysis = await analyzeGeneratedSong(song);
+      const analysis = await analyzeGeneratedSong(song, parentSong?.lyrics); 
       onUpdateSong({ ...song, analysis });
     } catch (e) {
       console.error(e);
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -100,13 +132,8 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
   const handleRewrite = async () => {
     setIsRewriting(true);
     try {
-      // Generate improvements based on analysis
-      const updatedData = await rewriteSongWithImprovements(song);
-      
-      // Instead of replacing, create a new version in history
-      onCreateVersion(song, updatedData.lyrics, updatedData.technicalExplanation);
-      
-      // Reset view to lyrics (new song will be selected by parent component)
+      const updatedData = await rewriteSongWithImprovements(song, useAdvancedLogic, useMetaphorLogic);
+      onCreateVersion(song, updatedData.lyrics, updatedData.technicalExplanation, useAdvancedLogic, useMetaphorLogic);
       setActiveTab('lyrics'); 
     } catch (e) {
       console.error(e);
@@ -114,6 +141,37 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
       setIsRewriting(false);
     }
   }
+
+  const handleSmartEditSave = (newLine: string) => {
+      if (editingLineIndex === null) return;
+      
+      const originalLine = song.lyrics.split('\n')[editingLineIndex];
+      const lines = song.lyrics.split('\n');
+      lines[editingLineIndex] = newLine;
+      const newLyrics = lines.join('\n');
+      
+      // Create the updated song object
+      const updatedSong = { ...song, lyrics: newLyrics };
+
+      // If we have analysis, we should add this manual edit to the improvements grid
+      if (updatedSong.analysis) {
+          const manualImprovement = {
+              original: originalLine,
+              improved: newLine,
+              reason: "Manual Smart Edit by User",
+              source: 'User' as const
+          };
+          
+          updatedSong.analysis = {
+              ...updatedSong.analysis,
+              lineByLineImprovements: [manualImprovement, ...updatedSong.analysis.lineByLineImprovements]
+          };
+      }
+
+      onUpdateSong(updatedSong);
+      setEditingLineIndex(null);
+      setIsSmartEditorOpen(false);
+  };
 
   const getScoreColor = (score: number) => {
     if (score >= 85) return 'text-green-400 border-green-500/50';
@@ -123,7 +181,16 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
+      {isRewriting && <CreativeForgeLoader />}
+      {isComparisonOpen && parentSong && (
+          <ComparisonView 
+            currentSong={song} 
+            parentSong={parentSong} 
+            onClose={() => setIsComparisonOpen(false)} 
+          />
+      )}
+      
       {/* Top Card: Metadata & Cover */}
       <div className="bg-suno-card p-6 rounded-2xl border border-white/10 shadow-xl mb-4 shrink-0">
         <div className="flex flex-col md:flex-row gap-6">
@@ -184,7 +251,7 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
           onClick={() => setActiveTab('lyrics')}
           className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'lyrics' ? 'bg-suno-primary text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
         >
-          Original Lyrics
+          Lyrics {isSmartEditorOpen && <span className="ml-2 text-xs bg-white/20 px-1 rounded">Edit Mode</span>}
         </button>
         
         <button 
@@ -192,11 +259,18 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
           className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'analysis' ? 'bg-suno-accent text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
         >
           Deep Analysis
-          {song.analysis && <span className="text-[10px] bg-black/30 px-1.5 rounded text-white">{song.analysis.overallScore}</span>}
+          {!song.analysis ? (
+            <span className="flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+            </span>
+          ) : (
+            <span className="text-[10px] bg-black/30 px-1.5 rounded text-white">{song.analysis.overallScore}</span>
+          )}
         </button>
 
         <button 
-          onClick={() => { setActiveTab('variations'); handleGenerateVariations(); }}
+          onClick={() => setActiveTab('variations')}
           className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'variations' ? 'bg-suno-secondary text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
         >
           Variations
@@ -210,34 +284,58 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
         {/* TAB: LYRICS */}
         {activeTab === 'lyrics' && (
           <div className="flex-grow overflow-y-auto custom-scrollbar p-6 relative">
-            {isRewriting && (
-              <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center backdrop-blur-sm">
-                 <ProgressBar isRunning={isRewriting} label="Rewriting Song..." />
-              </div>
-            )}
-            <div className="absolute top-4 right-6 z-10">
-              <CopyButton text={song.lyrics} />
+            <div className="flex justify-between items-center absolute top-4 right-6 z-10 gap-2">
+                 <button 
+                    onClick={() => setIsSmartEditorOpen(!isSmartEditorOpen)}
+                    className={`text-xs px-3 py-1.5 rounded font-bold transition-colors ${isSmartEditorOpen ? 'bg-suno-primary text-white' : 'bg-white/10 text-gray-400 hover:text-white'}`}
+                 >
+                    {isSmartEditorOpen ? 'Done Editing' : '✨ Smart Edit'}
+                 </button>
+                 <CopyButton text={song.lyrics} />
             </div>
-             <pre className="font-mono text-sm md:text-base text-gray-200 whitespace-pre-wrap leading-relaxed pb-20">
+
+             <div className="font-mono text-sm md:text-base text-gray-200 whitespace-pre-wrap leading-relaxed pb-20">
                {song.lyrics.split('\n').map((line, i) => {
-                 if (line.trim().startsWith('[') && line.trim().endsWith(']')) {
-                   return <span key={i} className="text-suno-accent font-bold block mt-6 mb-2">{line}</span>;
+                 const isHeader = line.trim().startsWith('[') && line.trim().endsWith(']');
+                 const isMeta = line.trim().startsWith('(') && line.trim().endsWith(')');
+                 
+                 if (editingLineIndex === i && isSmartEditorOpen) {
+                     return (
+                         <div key={i} className="my-2">
+                             <SmartLineEditor 
+                                originalLine={line}
+                                songContext={`${song.stylePrompt} - ${song.title}`}
+                                onSave={handleSmartEditSave}
+                                onCancel={() => setEditingLineIndex(null)}
+                             />
+                         </div>
+                     )
                  }
-                 if (line.trim().startsWith('(') && line.trim().endsWith(')')) {
-                   return <span key={i} className="text-purple-400 italic block">{line}</span>;
-                 }
-                 return <span key={i} className="block min-h-[1.5em]">{line}</span>;
+
+                 return (
+                    <div 
+                        key={i}
+                        onClick={() => isSmartEditorOpen && !isHeader && line.trim() && setEditingLineIndex(i)}
+                        className={`
+                            ${isHeader ? 'text-suno-accent font-bold mt-6 mb-2' : ''}
+                            ${isMeta ? 'text-purple-400 italic' : ''}
+                            ${isSmartEditorOpen && !isHeader && line.trim() ? 'hover:bg-white/10 cursor-pointer p-1 rounded border border-transparent hover:border-white/20' : 'min-h-[1.5em]'}
+                        `}
+                    >
+                        {line}
+                    </div>
+                 );
                })}
-             </pre>
+             </div>
           </div>
         )}
 
         {/* TAB: ANALYSIS */}
         {activeTab === 'analysis' && (
           <div className="flex-grow overflow-y-auto custom-scrollbar p-6">
-            {isAnalyzing && !song.analysis ? (
+            {!song.analysis ? (
               <ProgressBar isRunning={true} label="Analyzing Structure..." />
-            ) : song.analysis ? (
+            ) : (
               <div className="space-y-6 animate-fade-in pb-20">
                 {/* Score Section */}
                 <div className="flex items-center gap-6 bg-black/30 p-4 rounded-xl border border-white/5">
@@ -256,6 +354,27 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
                   </div>
                 </div>
 
+                {/* COMPARISON REVIEW CARD (Only show if review data exists AND we have a parent to compare to) */}
+                {song.analysis.comparisonReview && parentSong && (
+                    <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-lg p-5 flex justify-between items-center">
+                        <div>
+                            <h5 className="text-sm font-bold text-blue-300 uppercase tracking-wider flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
+                                Version Comparison Available
+                            </h5>
+                            <p className="text-xs text-gray-400 mt-1">
+                                Verdict: <span className="text-white font-bold">{song.analysis.comparisonReview.verdict}</span>
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => setIsComparisonOpen(true)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform hover:scale-105"
+                        >
+                            View Full Comparison
+                        </button>
+                    </div>
+                )}
+
                 {/* Detailed Score Breakdown */}
                 <div className="bg-white/5 p-4 rounded-lg">
                     <h5 className="text-xs uppercase font-bold text-gray-400 mb-3">Score Breakdown</h5>
@@ -264,7 +383,7 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
                             <div key={i} className="flex justify-between items-center bg-black/20 p-2 rounded border border-white/5">
                                 <div>
                                     <span className="text-xs font-bold text-gray-300 block">{item.category}</span>
-                                    <span className="text-[10px] text-gray-500">{item.reason}</span>
+                                    <span className="text-[10px] text-gray-500 truncate max-w-[200px]">{item.reason}</span>
                                 </div>
                                 <span className={`text-sm font-bold ${getScoreColor(item.score * 10).split(' ')[0]}`}>{item.score}/10</span>
                             </div>
@@ -276,38 +395,33 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-suno-secondary/10 border border-suno-secondary/20 p-4 rounded-lg">
                         <h5 className="text-xs uppercase font-bold text-suno-secondary mb-2 flex items-center gap-2">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                             Theme Analysis
                         </h5>
                         <p className="text-sm text-gray-300 leading-relaxed">{song.analysis.themeAnalysis}</p>
                     </div>
                     <div className="bg-suno-primary/10 border border-suno-primary/20 p-4 rounded-lg">
                         <h5 className="text-xs uppercase font-bold text-suno-primary mb-2 flex items-center gap-2">
-                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                              Story Arc
                         </h5>
                         <p className="text-sm text-gray-300 leading-relaxed">{song.analysis.storyArc}</p>
                     </div>
                 </div>
 
-                {/* Sonic Analysis (The Producer's Ear) */}
+                {/* Sonic Analysis */}
                 <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-white/10 rounded-lg overflow-hidden">
                     <div className="bg-white/5 px-4 py-2 border-b border-white/10 flex items-center gap-2">
                         <span className="text-lg">🎧</span>
                         <h5 className="text-sm font-bold text-white">Sonic & Structural Analysis (Producer's Ear)</h5>
                     </div>
                     <div className="p-4 space-y-4">
-                        {/* Phonetics */}
                         <div className="flex gap-4 items-start">
                              <div className="w-16 text-[10px] font-bold text-gray-400 uppercase shrink-0 pt-1">Phonetics</div>
                              <p className="text-sm text-gray-300">{song.analysis.sonicAnalysis.phonetics}</p>
                         </div>
-                        {/* Density */}
                         <div className="flex gap-4 items-start border-t border-white/5 pt-4">
                              <div className="w-16 text-[10px] font-bold text-gray-400 uppercase shrink-0 pt-1">Density</div>
                              <p className="text-sm text-gray-300">{song.analysis.sonicAnalysis.density}</p>
                         </div>
-                        {/* Cinema Audit */}
                         <div className="flex gap-4 items-start border-t border-white/5 pt-4">
                              <div className="w-16 text-[10px] font-bold text-gray-400 uppercase shrink-0 pt-1">Cinema Audit</div>
                              <div className="flex-grow">
@@ -329,11 +443,22 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
                 </div>
 
                 <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg">
-                  <h5 className="text-xs uppercase font-bold text-blue-400 mb-2">Line-by-Line Improvements</h5>
+                  <div className="flex justify-between items-center mb-2">
+                      <h5 className="text-xs uppercase font-bold text-blue-400">Line-by-Line Improvements</h5>
+                      <button 
+                         onClick={() => { setActiveTab('lyrics'); setIsSmartEditorOpen(true); }}
+                         className="text-[10px] bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 px-2 py-1 rounded transition"
+                      >
+                          Open Smart Editor
+                      </button>
+                  </div>
                   <div className="space-y-3">
                     {song.analysis.lineByLineImprovements.map((item, i) => (
-                      <div key={i} className="bg-black/40 p-3 rounded border border-white/5">
-                        <div className="text-red-300/70 text-xs line-through mb-1">{item.original}</div>
+                      <div key={i} className={`bg-black/40 p-3 rounded border ${item.source === 'User' ? 'border-suno-primary/40' : 'border-white/5'}`}>
+                        <div className="flex justify-between items-start">
+                            <div className="text-red-300/70 text-xs line-through mb-1">{item.original}</div>
+                            {item.source === 'User' && <span className="text-[9px] bg-suno-primary/20 text-suno-primary px-1 rounded">Manual Edit</span>}
+                        </div>
                         <div className="text-green-400 text-sm font-medium mb-1 flex items-center gap-2">
                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
                            {item.improved}
@@ -344,29 +469,60 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
                   </div>
                 </div>
 
-                {/* Rewrite Action */}
-                <div className="pt-4 border-t border-white/10">
-                    <button 
-                        onClick={handleRewrite}
-                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        Rewrite Song with Improvements
-                    </button>
-                    <p className="text-center text-[10px] text-gray-500 mt-2">
-                        Applies phonetic fixes, creates density contrast, and adds concrete imagery. 
-                        <span className="text-green-400 font-medium ml-1">Saves as new V2 file.</span>
-                    </p>
+                {/* Enhanced Rewrite Studio */}
+                <div className="pt-6 border-t border-white/10">
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                            <span className="text-suno-primary">⚡</span> Rewrite Studio
+                        </h3>
+                        
+                        {/* AI Advice */}
+                        {song.analysis.rewriteAdvice && (
+                            <div className="mb-4 bg-black/30 p-3 rounded text-xs text-gray-300 border-l-2 border-suno-accent">
+                                <strong className="text-suno-accent block mb-1">AI Recommendation:</strong>
+                                {song.analysis.rewriteAdvice.reasoning}
+                            </div>
+                        )}
+
+                        <div className="flex gap-4 mb-4">
+                             <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                                 <input 
+                                    type="checkbox" 
+                                    checked={useAdvancedLogic} 
+                                    onChange={e => setUseAdvancedLogic(e.target.checked)}
+                                    className="rounded bg-black/50 border-gray-600 text-suno-primary focus:ring-0"
+                                 />
+                                 Advanced Lyric Logic
+                             </label>
+                             <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                                 <input 
+                                    type="checkbox" 
+                                    checked={useMetaphorLogic} 
+                                    onChange={e => setUseMetaphorLogic(e.target.checked)}
+                                    className="rounded bg-black/50 border-gray-600 text-suno-accent focus:ring-0"
+                                 />
+                                 Central Metaphor Logic
+                             </label>
+                        </div>
+
+                        <button 
+                            onClick={handleRewrite}
+                            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Generate Version {song.title.includes('V') ? parseInt(song.title.split('V')[1]) + 1 : 2}
+                        </button>
+                    </div>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         )}
 
         {/* TAB: VARIATIONS */}
         {activeTab === 'variations' && (
           <div className="flex-grow overflow-y-auto custom-scrollbar p-6">
-            {isGeneratingVariations && !song.variations ? (
+            {isGeneratingVariations ? (
                <ProgressBar isRunning={true} label="Dreaming up Variations..." />
             ) : song.variations ? (
               <div className="space-y-8 pb-20">
@@ -388,7 +544,17 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, onUpdateSong
                   </div>
                 ))}
               </div>
-            ) : null}
+            ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                    <p className="text-gray-400 text-sm mb-4">No variations generated yet.</p>
+                    <button 
+                        onClick={handleGenerateVariations}
+                        className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-suno-secondary hover:bg-pink-600 shadow-lg transition-all"
+                    >
+                        Generate 2 Variations
+                    </button>
+                </div>
+            )}
           </div>
         )}
       </div>
