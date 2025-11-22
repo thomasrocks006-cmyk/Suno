@@ -31,8 +31,8 @@ const TIPS: SunoTip[] = [
 
 export const TipsSidebar: React.FC = () => {
   return (
-    <div className="hidden lg:block w-64 shrink-0 pl-6 border-l border-white/10">
-      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Pro Tips</h3>
+    <div className="w-full h-full p-4">
+      <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Pro Tips</h3>
       <div className="space-y-4">
         {TIPS.map((tip, index) => (
           <div key={index} className="bg-white/5 p-4 rounded-lg border border-white/5 hover:border-suno-primary/50 transition-colors">

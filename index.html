@@ -17,11 +17,26 @@
             },
             colors: {
               suno: {
-                dark: '#0f0f13',
-                card: '#18181b',
-                primary: '#8b5cf6',
-                secondary: '#ec4899',
-                accent: '#06b6d4'
+                dark: '#020617', // slate-950
+                card: '#0f172a', // slate-900
+                surface: '#1e293b', // slate-800
+                primary: '#22d3ee', // cyan-400
+                secondary: '#c084fc', // purple-400
+                accent: '#f472b6', // pink-400
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'slide-up': 'slideUp 0.5s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
               }
             }
           }
@@ -30,8 +45,10 @@
     </script>
     <style>
       body {
-        background-color: #0f0f13;
-        color: #e4e4e7;
+        background-color: #020617;
+        color: #e2e8f0;
+        background-image: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #020617 50%);
+        min-height: 100vh;
       }
       /* Custom scrollbar for code editors */
       .custom-scrollbar::-webkit-scrollbar {
@@ -47,6 +64,14 @@
       }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #52525b; 
+      }
+      @keyframes progress-indeterminate {
+        0% { width: 0%; margin-left: 0%; }
+        50% { width: 50%; margin-left: 25%; }
+        100% { width: 0%; margin-left: 100%; }
+      }
+      .animate-progress-indeterminate {
+        animation: progress-indeterminate 1.5s infinite ease-in-out;
       }
     </style>
   <script type="importmap">

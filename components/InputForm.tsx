@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { SongInputs, StructureType, AnalysisResponse, FeedbackItem, InferredAttributes } from '../types';
+import { SongInputs, StructureType, AnalysisResponse, FeedbackItem, InferredAttributes, SunoModel } from '../types';
 import { StyleBuilderModal } from './StyleBuilderModal';
 import { InstrumentSelector } from './InstrumentSelector';
 import { analyzeSongConcept, inferAttributesFromReference } from '../services/geminiService';
@@ -35,7 +35,11 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
   const [suggestions, setSuggestions] = useState<InferredAttributes | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isInferring, setIsInferring] = useState(false);
-  const [activeFeedback, setActiveFeedback] = useState<string | null>(null); // Field key
+  const [activeSection, setActiveSection] = useState<'core' | 'style' | 'lyrics' | 'advanced'>('core');
+
+  const toggleSection = (section: 'core' | 'style' | 'lyrics' | 'advanced') => {
+    setActiveSection(activeSection === section ? section : section);
+  };
 
   const handleChange = (field: keyof SongInputs, value: any) => {
     setInputs(prev => ({ ...prev, [field]: value }));
@@ -179,23 +183,24 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
 
   return (
     <>
-      <div className="bg-suno-card p-6 rounded-2xl border border-white/10 shadow-xl h-full flex flex-col relative">
+      <div className="bg-suno-card p-3 md:p-6 rounded-2xl border border-white/10 shadow-xl h-full flex flex-col relative">
         {/* Header with Analyze Button */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-suno-primary to-suno-secondary bg-clip-text text-transparent">
+        <div className="flex justify-between items-center mb-3 md:mb-6 gap-2">
+          <h2 className="text-lg md:text-2xl font-bold bg-gradient-to-r from-suno-primary to-suno-secondary bg-clip-text text-transparent">
             Song Parameters
           </h2>
           <button
             onClick={handleAnalyze}
             disabled={isAnalyzing}
-            className="text-xs bg-suno-primary/10 hover:bg-suno-primary/20 text-suno-primary border border-suno-primary/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-2"
+            className="text-[10px] md:text-xs bg-suno-primary/10 hover:bg-suno-primary/20 text-suno-primary border border-suno-primary/30 px-2 md:px-3 py-1 md:py-1.5 rounded-lg transition-all flex items-center gap-1 md:gap-2 whitespace-nowrap"
           >
             {isAnalyzing ? (
               <span className="animate-pulse">Analyzing...</span>
             ) : (
               <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                Assistant Check
+                <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                <span className="hidden sm:inline">Assistant Check</span>
+                <span className="sm:hidden">Check</span>
               </>
             )}
           </button>
@@ -203,21 +208,21 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
         
         {/* Assistant General Advice Panel */}
         {analysis?.generalAdvice && (
-          <div className="mb-6 bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex gap-3 items-start animate-fade-in">
-            <div className="text-blue-400 mt-0.5">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div className="mb-3 md:mb-6 bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 md:p-3 flex gap-2 md:gap-3 items-start animate-fade-in">
+            <div className="text-blue-400 mt-0.5 shrink-0">
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
-            <div>
-              <h4 className="text-xs font-bold text-blue-400 uppercase mb-1">Assistant Note</h4>
-              <p className="text-sm text-blue-100/80 leading-snug">{analysis.generalAdvice}</p>
+            <div className="min-w-0 flex-grow">
+              <h4 className="text-[10px] md:text-xs font-bold text-blue-400 uppercase mb-1">Assistant Note</h4>
+              <p className="text-xs md:text-sm text-blue-100/80 leading-snug break-words">{analysis.generalAdvice}</p>
             </div>
-            <button onClick={() => setAnalysis(null)} className="text-blue-400/50 hover:text-blue-400 ml-auto">×</button>
+            <button onClick={() => setAnalysis(null)} className="text-blue-400/50 hover:text-blue-400 shrink-0 text-lg">×</button>
           </div>
         )}
         
-        <div className="space-y-5 flex-grow">
+        <div className="space-y-3 md:space-y-5 flex-grow">
           {/* Inspiration References (Artist + Song) */}
-          <div className="relative bg-white/5 p-3 rounded-lg border border-white/5 space-y-3">
+          <div className="relative bg-white/5 p-2 md:p-3 rounded-lg border border-white/5 space-y-2 md:space-y-3">
             <div className="flex justify-between items-center">
                 <label className="block text-sm font-medium text-suno-accent mb-1 flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>

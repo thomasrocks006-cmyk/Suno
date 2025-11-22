@@ -2,10 +2,10 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { SongInputs, GeneratedSong, StructureType, AnalysisResponse, SongAnalysis, SongVariation, InferredAttributes, EvaluationResult, FIXED_SCORING_CATEGORIES } from "../types";
 
-const apiKey = process.env.API_KEY;
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 if (!apiKey) {
-  console.error("API_KEY is missing from environment variables.");
+  console.error("VITE_GEMINI_API_KEY is missing from environment variables.");
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy_key_for_build' });
@@ -381,19 +381,25 @@ export const generateSongAssets = async (inputs: SongInputs): Promise<GeneratedS
 
     const rawSong = JSON.parse(text);
     
+    if (!rawSong.lyrics || !rawSong.title || !rawSong.stylePrompt) {
+        throw new Error("AI generated incomplete song data. Please try again.");
+    }
+
     const generatedSong: GeneratedSong = {
       ...rawSong,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
       hasAdvancedLogic: inputs.advancedLyricLogic,
-      hasMetaphorLogic: inputs.centralMetaphorLogic
+      hasMetaphorLogic: inputs.centralMetaphorLogic,
+      model: inputs.model,
+      instrumental: inputs.instrumental
     };
 
     // 2. Generate Album Art
     if (generatedSong.coverArtPrompt) {
       try {
         const imageResponse = await ai.models.generateImages({
-          model: 'imagen-4.0-generate-001',
+          model: 'imagen-3.0-generate-001',
           prompt: generatedSong.coverArtPrompt,
           config: {
             numberOfImages: 1,

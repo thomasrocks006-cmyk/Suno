@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { generateSongAssets, analyzeGeneratedSong, generateSongVariations } from './services/geminiService';
 import { InputForm } from './components/InputForm';
 import { ResultDisplay } from './components/ResultDisplay';
-import { TipsSidebar } from './components/TipsSidebar';
-import { SongHistorySidebar } from './components/SongHistorySidebar';
+import { Sidebar } from './components/Sidebar';
+import { MiniPlayer } from './components/MiniPlayer';
+import { FullPlayerView } from './components/FullPlayerView';
 import { SongInputs, GeneratedSong, StructureType } from './types';
 
 const INITIAL_INPUTS: SongInputs = {
@@ -19,7 +19,9 @@ const INITIAL_INPUTS: SongInputs = {
   customInstructions: '',
   syllablePattern: '',
   advancedLyricLogic: false,
-  centralMetaphorLogic: false
+  centralMetaphorLogic: false,
+  model: 'V4',
+  instrumental: false
 };
 
 export default function App() {
@@ -29,6 +31,8 @@ export default function App() {
   
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isInputPanelOpen, setIsInputPanelOpen] = useState(true);
 
   // Handle persistence of history
   useEffect(() => {
@@ -61,6 +65,7 @@ export default function App() {
       // IMMEDIATE UPDATE: Show the song to the user now
       setHistory(prev => [newSong, ...prev]);
       setCurrentSong(newSong);
+      setIsInputPanelOpen(false); // Close input panel to show results
       
       // 2. Run Deep Analysis in the background
       triggerBackgroundAnalysis(newSong);
@@ -155,6 +160,11 @@ export default function App() {
     }
   };
   
+  const handleSelectSong = (song: GeneratedSong) => {
+    setCurrentSong(song);
+    setIsInputPanelOpen(false);
+  };
+
   // Find parent song if available
   const parentSong = currentSong?.parentId 
     ? history.find(h => h.id === currentSong.parentId) 
@@ -164,8 +174,14 @@ export default function App() {
     <div className="min-h-screen bg-suno-dark text-gray-100 font-sans selection:bg-suno-primary selection:text-white flex flex-col">
       {/* Navbar */}
       <header className="border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="w-full px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="lg:hidden p-2 text-gray-400 hover:text-white"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-suno-primary to-suno-accent flex items-center justify-center font-bold text-white">
               S
             </div>
@@ -177,57 +193,78 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-grow max-w-7xl mx-auto w-full px-4 py-8 md:px-6 flex flex-col lg:flex-row gap-6">
-        {/* 1. History Sidebar (Left) */}
-        <SongHistorySidebar 
+      <div className="flex flex-1 overflow-hidden">
+        {/* 1. Unified Sidebar (Left) */}
+        <Sidebar 
           history={history} 
-          onSelectSong={setCurrentSong} 
+          onSelectSong={handleSelectSong} 
           currentSongId={currentSong?.id}
           onClearHistory={handleClearHistory}
+          isOpen={isSidebarOpen}
+          onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 
-        {/* 2. Input Column (Middle-Left) */}
-        <div className="w-full lg:w-[340px] flex-shrink-0">
-          <InputForm 
-            inputs={inputs} 
-            setInputs={setInputs} 
-            onSubmit={handleSubmit} 
-            loadingStatus={loadingStatus}
-          />
-          {error && (
-            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-200 text-sm animate-pulse">
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* 3. Result Column (Middle-Right/Main) */}
-        <div className="w-full flex-grow min-h-[600px] lg:h-[calc(100vh-8rem)]">
-          {currentSong ? (
-            <ResultDisplay 
-              song={currentSong} 
-              parentSong={parentSong}
-              onUpdateSong={handleUpdateSong}
-              onCreateVersion={handleCreateVersion}
-            />
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center bg-suno-card rounded-2xl border border-white/10 border-dashed text-center p-8 opacity-50">
-              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 animate-pulse">
-                 <svg className="w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                 </svg>
+        {/* Main Content Area */}
+        <main className="flex-1 flex overflow-hidden relative">
+          
+          {/* 2. Input Column (Dynamic) */}
+          {isInputPanelOpen && (
+            <div className="flex-shrink-0 bg-black/10 border-r border-white/5 overflow-y-auto custom-scrollbar w-full max-w-4xl mx-auto border-none bg-transparent">
+              <div className="p-4 md:p-8 max-w-3xl mx-auto">
+                {currentSong && (
+                   <button 
+                      onClick={() => setIsInputPanelOpen(false)}
+                      className="mb-4 flex items-center gap-2 text-xs text-gray-400 hover:text-white"
+                   >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg>
+                      Back to Current Song
+                   </button>
+                )}
+                <InputForm 
+                  inputs={inputs} 
+                  setInputs={setInputs} 
+                  onSubmit={handleSubmit} 
+                  loadingStatus={loadingStatus}
+                />
+                {error && (
+                  <div className="mt-3 md:mt-4 p-3 md:p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-200 text-xs md:text-sm animate-pulse">
+                    {error}
+                  </div>
+                )}
               </div>
-              <h3 className="text-xl font-medium text-gray-300 mb-2">Studio Ready</h3>
-              <p className="text-gray-500 max-w-xs mx-auto">
-                Fill out the form to generate your next track, or select a song from history.
-              </p>
             </div>
           )}
-        </div>
 
-        {/* 4. Tips (Far Right - Desktop only) */}
-        <TipsSidebar />
-      </main>
+          {/* 3. Result Column (Main View) */}
+          {currentSong && !isInputPanelOpen && (
+            <div className="flex-1 overflow-hidden bg-suno-surface/30 relative flex flex-col">
+              {/* Header Bar with New Song Button */}
+              <div className="flex-shrink-0 border-b border-white/5 bg-black/20 backdrop-blur-sm px-4 md:px-6 py-3 flex items-center justify-between z-20">
+                <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Song Details</h2>
+                <button 
+                  onClick={() => setIsInputPanelOpen(true)}
+                  className="bg-suno-primary hover:bg-suno-primary/80 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 transition-all hover:scale-105"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+                  New Song
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
+                <ResultDisplay 
+                  key={currentSong.id}
+                  song={currentSong} 
+                  parentSong={parentSong}
+                  onUpdateSong={handleUpdateSong}
+                  onCreateVersion={handleCreateVersion}
+                />
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+      <MiniPlayer />
+      <FullPlayerView />
     </div>
   );
 }

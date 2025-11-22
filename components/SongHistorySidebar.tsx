@@ -16,8 +16,8 @@ export const SongHistorySidebar: React.FC<SongHistorySidebarProps> = ({
   onClearHistory
 }) => {
   return (
-    <div className="w-full lg:w-64 shrink-0 flex flex-col h-[500px] lg:h-auto lg:min-h-[calc(100vh-8rem)] bg-suno-card border border-white/10 rounded-2xl overflow-hidden shadow-xl">
-      <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/20">
+    <div className="w-full h-full flex flex-col overflow-hidden">
+      <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/20 shrink-0">
         <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
           <svg className="w-4 h-4 text-suno-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           Session History
@@ -39,7 +39,10 @@ export const SongHistorySidebar: React.FC<SongHistorySidebarProps> = ({
             <p className="mt-1">Create your first hit!</p>
           </div>
         ) : (
-          history.map((song) => (
+          history.map((song) => {
+            const coverSrc = song.imageUrl || (song.coverImageBase64 ? (song.coverImageBase64.startsWith('data:') ? song.coverImageBase64 : `data:image/jpeg;base64,${song.coverImageBase64}`) : null);
+            
+            return (
             <div 
               key={song.id}
               onClick={() => onSelectSong(song)}
@@ -51,9 +54,9 @@ export const SongHistorySidebar: React.FC<SongHistorySidebarProps> = ({
             >
               <div className="flex items-start gap-3">
                 {/* Mini Cover */}
-                <div className="w-10 h-10 rounded bg-black/50 shrink-0 overflow-hidden border border-white/10 relative">
-                  {song.coverImageBase64 ? (
-                    <img src={`data:image/jpeg;base64,${song.coverImageBase64}`} alt="cover" className="w-full h-full object-cover" />
+                <div className="w-12 h-12 rounded bg-black/50 shrink-0 overflow-hidden border border-white/10 relative">
+                  {coverSrc ? (
+                    <img src={coverSrc} alt="cover" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-lg">🎵</div>
                   )}
@@ -96,7 +99,7 @@ export const SongHistorySidebar: React.FC<SongHistorySidebarProps> = ({
                 </div>
               )}
             </div>
-          ))
+          )})
         )}
       </div>
     </div>

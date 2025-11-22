@@ -7,6 +7,8 @@ export enum StructureType {
   EXPERIMENTAL = 'Experimental/Progressive'
 }
 
+export type SunoModel = 'V3_5' | 'V4' | 'V4_5' | 'V4_5PLUS' | 'V5';
+
 export type ScoringCategory = 
   | 'Lyrical Originality'
   | 'Melodic & Phonetic Flow'
@@ -37,6 +39,8 @@ export interface SongInputs {
   syllablePattern: string;
   advancedLyricLogic: boolean;
   centralMetaphorLogic: boolean;
+  model: SunoModel;
+  instrumental: boolean;
 }
 
 export interface InferredAttributes {
@@ -119,6 +123,14 @@ export interface GeneratedSong {
   // Feature Flags
   hasAdvancedLogic: boolean;
   hasMetaphorLogic: boolean;
+  model?: SunoModel;
+  instrumental?: boolean;
+  // Suno Audio Generation
+  sunoTaskId?: string;
+  audioUrl?: string;
+  streamAudioUrl?: string;
+  audioStatus?: 'PENDING' | 'TEXT_SUBMITTING' | 'TEXT_SUCCESS' | 'GENERATING' | 'SUCCESS' | 'FAILED';
+  actualModel?: string; // The actual model version used by Suno API
 }
 
 export interface SunoTip {

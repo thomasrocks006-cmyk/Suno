@@ -11,11 +11,16 @@ interface ComparisonViewProps {
 export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, parentSong, onClose }) => {
   const review = currentSong.analysis?.comparisonReview;
 
-  if (!review) return null;
+  if (!review) {
+    console.warn('[ComparisonView] No comparison review data found');
+    return null;
+  }
+
+  console.log('[ComparisonView] Rendering with review:', review);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-lg flex items-center justify-center p-6 animate-in fade-in zoom-in-95">
-      <div className="w-full max-w-6xl h-[90vh] bg-suno-card border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in">
+      <div className="w-full max-w-6xl h-[90vh] bg-gray-900 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="p-6 border-b border-white/10 bg-black/20 flex justify-between items-center shrink-0">
@@ -53,11 +58,15 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, par
                         Improvements
                     </h3>
                     <ul className="space-y-2">
-                        {review.improvements.map((item, i) => (
+                        {(review.improvements || []).length > 0 ? (
+                          review.improvements.map((item, i) => (
                             <li key={i} className="text-gray-300 text-sm flex items-start gap-2">
                                 <span className="text-green-500 mt-1">✓</span> {item}
                             </li>
-                        ))}
+                          ))
+                        ) : (
+                          <li className="text-gray-500 text-sm italic">No improvements detected</li>
+                        )}
                     </ul>
                 </div>
 
@@ -67,11 +76,15 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, par
                         Missed / Regressions
                     </h3>
                     <ul className="space-y-2">
-                        {review.missedOpportunities.map((item, i) => (
+                        {(review.missedOpportunities || []).length > 0 ? (
+                          review.missedOpportunities.map((item, i) => (
                             <li key={i} className="text-gray-300 text-sm flex items-start gap-2">
                                 <span className="text-red-500 mt-1">⚠</span> {item}
                             </li>
-                        ))}
+                          ))
+                        ) : (
+                          <li className="text-gray-500 text-sm italic">No issues found</li>
+                        )}
                     </ul>
                 </div>
 
@@ -79,16 +92,16 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, par
                     <h3 className="text-blue-400 font-bold text-sm uppercase tracking-wider mb-3">Score Impact</h3>
                     <div className="flex-grow flex flex-col justify-center items-center">
                         <div className="text-5xl font-bold text-white mb-2">
-                            {review.scoreDelta > 0 ? `+${review.scoreDelta}` : review.scoreDelta}
+                            {(review.scoreDelta || 0) > 0 ? `+${review.scoreDelta}` : (review.scoreDelta || 0)}
                         </div>
                         <div className="text-sm text-gray-400">Point Change</div>
                         <div className="w-full h-2 bg-gray-700 rounded-full mt-4 overflow-hidden relative">
                              <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20"></div>
                              <div 
-                                className={`h-full transition-all ${review.scoreDelta > 0 ? 'bg-green-500' : 'bg-red-500'}`}
+                                className={`h-full transition-all ${(review.scoreDelta || 0) > 0 ? 'bg-green-500' : 'bg-red-500'}`}
                                 style={{ 
-                                    width: `${Math.min(Math.abs(review.scoreDelta) * 2, 50)}%`,
-                                    marginLeft: review.scoreDelta > 0 ? '50%' : `calc(50% - ${Math.min(Math.abs(review.scoreDelta) * 2, 50)}%)`
+                                    width: `${Math.min(Math.abs(review.scoreDelta || 0) * 2, 50)}%`,
+                                    marginLeft: (review.scoreDelta || 0) > 0 ? '50%' : `calc(50% - ${Math.min(Math.abs(review.scoreDelta || 0) * 2, 50)}%)`
                                 }} 
                              />
                         </div>
