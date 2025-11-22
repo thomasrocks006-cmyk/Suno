@@ -686,8 +686,10 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
               <ProgressBar isRunning={true} label="Analyzing Structure..." />
             ) : (
               <EnhancedAnalysisView 
+                song={song}
                 analysis={song.analysis}
                 onOpenSmartEditor={() => { setActiveTab('lyrics'); setIsSmartEditorOpen(true); }}
+                onRewrite={handleRewrite}
               />
             )}
           </div>

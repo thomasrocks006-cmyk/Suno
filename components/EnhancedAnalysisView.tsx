@@ -1,15 +1,20 @@
 import React from 'react';
-import { SongAnalysis } from '../types';
+import { GeneratedSong, SongAnalysis } from '../types';
 import { RadarChart } from './RadarChart';
+import { RewriteStudio } from './RewriteStudio';
 
 interface EnhancedAnalysisViewProps {
+  song: GeneratedSong;
   analysis: SongAnalysis;
   onOpenSmartEditor: () => void;
+  onRewrite: (useAdvancedLogic: boolean, useMetaphorLogic: boolean) => void;
 }
 
 export const EnhancedAnalysisView: React.FC<EnhancedAnalysisViewProps> = ({ 
+  song,
   analysis, 
-  onOpenSmartEditor 
+  onOpenSmartEditor,
+  onRewrite
 }) => {
   const getScoreColor = (score: number) => {
     if (score >= 85) return 'text-green-400 border-green-500/50';
@@ -307,6 +312,9 @@ export const EnhancedAnalysisView: React.FC<EnhancedAnalysisViewProps> = ({
         </h4>
         <p className="text-sm text-gray-300 leading-relaxed">{analysis.commercialViability}</p>
       </div>
+
+      {/* Rewrite Studio */}
+      <RewriteStudio song={song} onRewrite={onRewrite} />
     </div>
   );
 };
