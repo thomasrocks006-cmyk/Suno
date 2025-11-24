@@ -7,6 +7,7 @@ import { MiniPlayer } from './components/MiniPlayer';
 import { FullPlayerView } from './components/FullPlayerView';
 import { SkeletonLoader } from './components/SkeletonLoader';
 import AgentDebateModal from './components/AgentDebateModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { SongInputs, GeneratedSong, StructureType } from './types';
 
 // Lazy load heavy modal components for better initial bundle size
@@ -106,7 +107,16 @@ export default function App() {
           if (parent) parentLyrics = parent.lyrics;
       }
 
-      const result = await analyzeGeneratedSong(songToAnalyze, parentLyrics);
+      // Run analysis with live progress updates
+      const result = await analyzeGeneratedSong(
+        songToAnalyze, 
+        parentLyrics,
+        (stage, agent) => {
+          // Update modal in real-time as agents complete
+          console.log(`Progress: ${stage} ${agent || ''}`);
+          // Modal will re-render as debateSong updates
+        }
+      );
       
       // Update the song in history and current view (with analysis AND debates)
       const updatedSong = { 
@@ -124,7 +134,8 @@ export default function App() {
       setDebateSong(updatedSong);
       
     } catch (analysisError) {
-      console.warn("Background analysis failed:", analysisError);
+      console.error("Background analysis failed:", analysisError);
+      setError("Analysis failed. Please try again.");
       setShowDebateModal(false); // Close modal on error
     }
   };
@@ -344,17 +355,33 @@ export default function App() {
       
       {/* Agent Debate Modal - Shows during analysis */}
       {showDebateModal && debateSong && (
-        <AgentDebateModal
-          isOpen={showDebateModal}
-          onClose={() => setShowDebateModal(false)}
-          song={debateSong}
-          debates={debateSong.agentDebates || []}
-          consensusItems={debateSong.analysis?.consensusStrengths || []}
-          onComplete={() => {
-            setShowDebateModal(false);
-            // Analysis is already complete, just close modal
-          }}
-        />
+        <ErrorBoundary fallback={
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6 max-w-md text-center">
+              <span className="text-5xl mb-4 block">⚠️</span>
+              <h3 className="text-xl font-bold text-white mb-2">Analysis Error</h3>
+              <p className="text-gray-300 mb-4">The agent debate system encountered an error</p>
+              <button
+                onClick={() => setShowDebateModal(false)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        }>
+          <AgentDebateModal
+            isOpen={showDebateModal}
+            onClose={() => setShowDebateModal(false)}
+            song={debateSong}
+            debates={debateSong.agentDebates || []}
+            consensusItems={debateSong.analysis?.consensusStrengths || []}
+            onComplete={() => {
+              setShowDebateModal(false);
+              // Analysis is already complete, just close modal
+            }}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

@@ -45,28 +45,33 @@ export function AgentDebateModal({
   const [visibleDebates, setVisibleDebates] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
 
-  // Stage progression logic
+  // Stage progression logic - immediate feedback
   useEffect(() => {
     if (!hasAnalysis) {
       setStage('analyzing');
     } else if (hasDebates && visibleDebates < debates.length) {
       setStage('debating');
+      // Start showing debates immediately when data arrives
+      if (visibleDebates === 0 && debates.length > 0) {
+        setVisibleDebates(1);
+      }
     } else if (hasDebates) {
       setStage('consensus');
       // Auto-advance to complete after showing consensus
       const timer = setTimeout(() => setStage('complete'), 2000);
       return () => clearTimeout(timer);
-    } else {
+    } else if (hasAnalysis) {
+      // No debates but analysis complete
       setStage('complete');
     }
   }, [hasAnalysis, hasDebates, visibleDebates, debates.length]);
 
-  // Animate debates appearing one by one
+  // Animate debates appearing one by one (faster for better UX)
   useEffect(() => {
-    if (stage === 'debating' && visibleDebates < debates.length) {
+    if (stage === 'debating' && visibleDebates > 0 && visibleDebates < debates.length) {
       const timer = setTimeout(() => {
         setVisibleDebates(prev => prev + 1);
-      }, 1000);
+      }, 600); // Faster animation
       return () => clearTimeout(timer);
     }
   }, [stage, visibleDebates, debates.length]);
@@ -250,6 +255,49 @@ export function AgentDebateModal({
                 </div>
               ))}
             </div>
+
+            {/* ANALYZING PHASE: Show what agents are looking for */}
+            {stage === 'analyzing' && (
+              <div className="space-y-3 mb-6 animate-fadeIn">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span className="text-2xl animate-pulse">🔍</span>
+                  What Agents Are Evaluating...
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    { agent: 'Lyricist', icon: '✍️', focus: 'Checking for clichés, originality, wordplay sophistication' },
+                    { agent: 'Storyteller', icon: '📖', focus: 'Analyzing narrative arc, emotional journey, thematic cohesion' },
+                    { agent: 'Vocal Coach', icon: '🎙️', focus: 'Testing vocal playability, phonetic flow, breath marks' },
+                    { agent: 'Producer', icon: '🎚️', focus: 'Evaluating sonic density, structure, production cues' },
+                    { agent: 'Hitmaker', icon: '🎯', focus: 'Measuring hook factor, commercial potential, memorability' }
+                  ].map((item, idx) => (
+                    <div 
+                      key={item.agent}
+                      className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-lg p-3 border border-purple-500/20 animate-slideInUp"
+                      style={{ animationDelay: `${idx * 100}ms` }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="text-2xl">{item.icon}</span>
+                        <div>
+                          <p className="text-xs font-bold text-purple-200 mb-1">{item.agent}</p>
+                          <p className="text-xs text-gray-400">{item.focus}</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 h-1 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 animate-shimmer" style={{ width: '200%' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {activeFeatures.length > 0 && (
+                  <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3 mt-3">
+                    <p className="text-xs text-yellow-200">
+                      ⚡ Agents are considering your active features: <strong>{activeFeatures.map(f => f.name).join(', ')}</strong>
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Debates Section */}
             {debates.length > 0 && (stage === 'debating' || stage === 'consensus' || stage === 'complete') && (

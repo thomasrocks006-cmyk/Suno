@@ -942,8 +942,14 @@ export const inferAttributesFromReference = async (artist: string, song: string)
   return JSON.parse(response.text) as InferredAttributes;
 };
 
-export const analyzeGeneratedSong = async (song: GeneratedSong, parentLyrics?: string): Promise<SongAnalysis> => {
+export const analyzeGeneratedSong = async (
+  song: GeneratedSong, 
+  parentLyrics?: string,
+  onProgress?: (stage: string, agent?: string) => void
+): Promise<{ analysis: SongAnalysis; agentDebates?: any[] }> => {
   const isRevision = !!parentLyrics || song.title.includes("(V2") || song.title.includes("Revision");
+  
+  if (onProgress) onProgress('deep-analysis');
 
   const prompt = `
     Act as a relentless, world-class music critic and producer. Analyze these song lyrics and concept.
@@ -1060,6 +1066,7 @@ export const analyzeGeneratedSong = async (song: GeneratedSong, parentLyrics?: s
   // ============================================================
   // 🎭 5-AGENT SPECIALIZED ANALYSIS (Phase 3)
   // ============================================================
+  if (onProgress) onProgress('5-agent-analysis');
   console.log('🎭 Starting 5-agent specialized analysis...');
   
   const { run5AgentAnalysis } = await import('./agentDebateService');
@@ -1091,12 +1098,15 @@ export const analyzeGeneratedSong = async (song: GeneratedSong, parentLyrics?: s
     title: song.title
   };
   
-  // Run 5-agent parallel analysis
+  // Run 5-agent parallel analysis with progress updates
   const agentAnalysis = await run5AgentAnalysis(
     song,
     inputs,
     programmaticScores,
-    baseAnalysis.sonicAnalysis
+    baseAnalysis.sonicAnalysis,
+    (agent, completed, total) => {
+      if (onProgress) onProgress('agent-progress', agent);
+    }
   );
   
   console.log('✅ 5-agent analysis complete');
