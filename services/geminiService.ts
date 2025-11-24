@@ -1104,6 +1104,14 @@ export const analyzeGeneratedSong = async (song: GeneratedSong, parentLyrics?: s
   console.log('💪 Consensus Strengths:', agentAnalysis.consensusStrengths.slice(0, 3).join(', '));
   console.log('⚠️  Consensus Weaknesses:', agentAnalysis.consensusWeaknesses.slice(0, 3).join(', '));
   
+  // Log debates if they occurred
+  if (agentAnalysis.agentDebates && agentAnalysis.agentDebates.length > 0) {
+    console.log('🎭 Agent Debates:', agentAnalysis.agentDebates.length);
+    agentAnalysis.agentDebates.forEach(debate => {
+      console.log(`  - ${debate.issue}: ${debate.resolution.decision}`);
+    });
+  }
+  
   // Merge base analysis with 5-agent scoring
   const analysis: SongAnalysis = {
     ...baseAnalysis,
@@ -1133,7 +1141,7 @@ export const analyzeGeneratedSong = async (song: GeneratedSong, parentLyrics?: s
     console.log(`  ${score.category}: ${score.score}/10 [${score.agent}]`);
   });
   
-  return analysis;
+  return { analysis, agentDebates: agentAnalysis.agentDebates };
 };
 
 export const rewriteSongWithImprovements = async (

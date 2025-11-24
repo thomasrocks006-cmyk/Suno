@@ -17,6 +17,17 @@ export default defineConfig(({ mode }) => {
         strictPort: false,
       },
       plugins: [react()],
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'validation-dashboard': ['./components/ValidationDashboard.tsx'],
+              'learning-dashboard': ['./components/LearningInsightsDashboard.tsx'],
+            }
+          }
+        },
+        chunkSizeWarningLimit: 1000,
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

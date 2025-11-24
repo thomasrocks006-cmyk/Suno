@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { generateSongAssets, analyzeGeneratedSong, generateSongVariations } from './services/geminiService';
 import { InputForm } from './components/InputForm';
 import { ResultDisplay } from './components/ResultDisplay';
 import { Sidebar } from './components/Sidebar';
 import { MiniPlayer } from './components/MiniPlayer';
 import { FullPlayerView } from './components/FullPlayerView';
-import { ValidationDashboard } from './components/ValidationDashboard';
-import { LearningInsightsDashboard } from './components/LearningInsightsDashboard';
+import { SkeletonLoader } from './components/SkeletonLoader';
+import { AgentDebateModal } from './components/AgentDebateModal';
 import { SongInputs, GeneratedSong, StructureType } from './types';
+
+// Lazy load heavy modal components for better initial bundle size
+const ValidationDashboard = lazy(() => import('./components/ValidationDashboard').then(m => ({ default: m.ValidationDashboard })));
+const LearningInsightsDashboard = lazy(() => import('./components/LearningInsightsDashboard').then(m => ({ default: m.LearningInsightsDashboard })));
 
 const INITIAL_INPUTS: SongInputs = {
   artistReference: '',
@@ -38,6 +42,10 @@ export default function App() {
   const [isInputPanelOpen, setIsInputPanelOpen] = useState(true);
   const [showValidationDashboard, setShowValidationDashboard] = useState(false);
   const [showLearningDashboard, setShowLearningDashboard] = useState(false);
+  
+  // Agent Debate Modal state
+  const [showDebateModal, setShowDebateModal] = useState(false);
+  const [debateSong, setDebateSong] = useState<GeneratedSong | null>(null);
 
   // Handle persistence of history
   useEffect(() => {
@@ -94,10 +102,14 @@ export default function App() {
           if (parent) parentLyrics = parent.lyrics;
       }
 
-      const analysis = await analyzeGeneratedSong(songToAnalyze, parentLyrics);
+      const result = await analyzeGeneratedSong(songToAnalyze, parentLyrics);
       
-      // Update the song in history and current view
-      const updatedSong = { ...songToAnalyze, analysis };
+      // Update the song in history and current view (with analysis AND debates)
+      const updatedSong = { 
+        ...songToAnalyze, 
+        analysis: result.analysis,
+        agentDebates: result.agentDebates 
+      };
       
       setHistory(prev => prev.map(s => s.id === songToAnalyze.id ? updatedSong : s));
       
@@ -292,10 +304,14 @@ export default function App() {
       
       {/* Modal Overlays */}
       {showValidationDashboard && (
-        <ValidationDashboard onClose={() => setShowValidationDashboard(false)} />
+        <Suspense fallback={<SkeletonLoader type="dashboard" />}>
+          <ValidationDashboard onClose={() => setShowValidationDashboard(false)} />
+        </Suspense>
       )}
       {showLearningDashboard && (
-        <LearningInsightsDashboard onClose={() => setShowLearningDashboard(false)} />
+        <Suspense fallback={<SkeletonLoader type="dashboard" />}>
+          <LearningInsightsDashboard onClose={() => setShowLearningDashboard(false)} />
+        </Suspense>
       )}
     </div>
   );

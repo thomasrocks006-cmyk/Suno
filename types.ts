@@ -308,6 +308,7 @@ export interface GeneratedSong {
   proposedPlan?: RewritePlanProposal; // Plan awaiting user approval
   chatHistory?: ChatMessage[]; // Deep Analysis chat conversation
   variations?: SongVariation[];
+  agentDebates?: AgentDebate[]; // Agent debates from automatic analysis
   // Feature Flags
   hasAdvancedLogic: boolean;
   hasMetaphorLogic: boolean;
@@ -320,6 +321,23 @@ export interface GeneratedSong {
   streamAudioUrl?: string;
   audioStatus?: 'PENDING' | 'TEXT_SUBMITTING' | 'TEXT_SUCCESS' | 'GENERATING' | 'SUCCESS' | 'FAILED';
   actualModel?: string; // The actual model version used by Suno API
+}
+
+export interface AgentDebate {
+  lineNumber?: number; // Optional for conceptual debates (not line-specific)
+  issue: string; // What the debate is about (e.g., "Tradeoff: Vocal Playability vs Emotional Impact")
+  originalLine?: string; // The line being debated (if line-specific)
+  proposedLine?: string; // Optional alternative suggestion
+  votes: {
+    agent: 'Lyricist' | 'Storyteller' | 'Vocal Coach' | 'Producer' | 'Hitmaker';
+    position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE';
+    reasoning: string;
+  }[];
+  resolution: {
+    decision: 'KEEP' | 'CHANGE' | 'COMPROMISE';
+    rationale: string;
+    finalVersion?: string; // If changed/compromised
+  };
 }
 
 export interface SunoTip {

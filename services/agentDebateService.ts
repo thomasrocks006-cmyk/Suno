@@ -13,7 +13,7 @@
  */
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { GeneratedSong, ScoringCategory, ScoreComponent } from "../types";
+import { GeneratedSong, ScoringCategory, ScoreComponent, AgentDebate } from "../types";
 
 // Import all 5 specialized agents
 import { analyzeLyricist, lyricistDebate, type LyricistAnalysis } from './lyricistAgent';
@@ -46,6 +46,9 @@ export interface FiveAgentAnalysis {
   consensusStrengths: string[]; // What all agents agree is good
   consensusWeaknesses: string[]; // What all agents agree needs work
   tradeoffDecisions: { area: string; priority: string; reasoning: string }[];
+  
+  // NEW: Automatic debates on conflicts
+  agentDebates?: AgentDebate[]; // Debates triggered when tradeoffs detected
 }
 
 /**
@@ -176,7 +179,43 @@ export async function run5AgentAnalysis(
   const consensusWeaknesses = identifyConsensusWeaknesses(lyricist, storyteller, vocalCoach, producer, hitmaker);
   
   // Identify tradeoff decisions (when optimization conflicts)
-  const tradeoffDecisions = identifyTradeoffs(lyricist, storyteller, vocalCoach, producer, hitmaker);
+  const tradeoffDecisions = identifyTradeoffs(lyricist, storyteller, vocalCoach, producer, hitmaker, scoreBreakdown);
+  
+  // 🆕 AUTO-DEBATE: Trigger debates when significant tradeoffs detected
+  let agentDebates: AgentDebate[] | undefined;
+  
+  if (tradeoffDecisions.length > 0) {
+    console.log(`⚔️  Detected ${tradeoffDecisions.length} tradeoffs - triggering automatic debates...`);
+    agentDebates = [];
+    
+    // Debate each tradeoff (limit to top 3 for performance)
+    for (const tradeoff of tradeoffDecisions.slice(0, 3)) {
+      try {
+        // Create a conceptual debate (not line-specific)
+        const debate: AgentDebate = {
+          issue: tradeoff.area,
+          votes: [
+            { agent: 'Lyricist', position: 'COMPROMISE', reasoning: lyricist.improvementOpportunities?.[0] || 'Maintain lyrical integrity' },
+            { agent: 'Storyteller', position: 'COMPROMISE', reasoning: storyteller.narrativeArc.reasoning },
+            { agent: 'Vocal Coach', position: tradeoff.priority.includes('singability') ? 'OPPOSE' : 'SUPPORT', reasoning: vocalCoach.vocalPlayability.reasoning },
+            { agent: 'Producer', position: 'SUPPORT', reasoning: producer.sonicDensity.reasoning },
+            { agent: 'Hitmaker', position: tradeoff.priority.includes('commercial') ? 'SUPPORT' : 'COMPROMISE', reasoning: hitmaker.commercialPotential.reasoning }
+          ],
+          resolution: {
+            decision: 'COMPROMISE',
+            rationale: tradeoff.reasoning
+          }
+        };
+        
+        agentDebates.push(debate);
+        console.log(`  ✅ Debate complete: ${tradeoff.area}`);
+      } catch (error) {
+        console.warn(`  ⚠️  Debate failed for ${tradeoff.area}:`, error);
+      }
+    }
+    
+    console.log(`🎭 ${agentDebates.length} debates completed`);
+  }
   
   return {
     lyricist,
@@ -188,7 +227,8 @@ export async function run5AgentAnalysis(
     overallScore,
     consensusStrengths,
     consensusWeaknesses,
-    tradeoffDecisions
+    tradeoffDecisions,
+    agentDebates
   };
 }
 
@@ -226,14 +266,74 @@ function identifyConsensusWeaknesses(...agents: any[]): string[] {
 }
 
 /**
- * Identify optimization tradeoffs
+ * Identify optimization tradeoffs by detecting score conflicts
+ * Tradeoffs occur when improving one category would hurt another
  */
-function identifyTradeoffs(...agents: any[]): { area: string; priority: string; reasoning: string }[] {
-  // This is a simplified version - could be enhanced with AI to detect conflicts
+function identifyTradeoffs(
+  lyricist: any,
+  storyteller: any,
+  vocalCoach: any,
+  producer: any,
+  hitmaker: any,
+  scoreBreakdown: ScoreComponent[]
+): { area: string; priority: string; reasoning: string }[] {
   const tradeoffs: { area: string; priority: string; reasoning: string }[] = [];
   
-  // Example: If singability is weak but emotional impact is strong
-  // This would indicate a tradeoff decision was made
+  // Extract scores by category
+  const scores = scoreBreakdown.reduce((acc, item) => {
+    acc[item.category] = item.score;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  // TRADEOFF 1: Vocal Playability vs Emotional Impact
+  // When complex phrasing creates singability issues but enhances emotion
+  if (scores['Vocal Playability'] < 7 && scores['Emotional Impact'] >= 8) {
+    tradeoffs.push({
+      area: 'Tradeoff: Vocal Playability vs Emotional Impact',
+      priority: 'Favor emotional depth over singability',
+      reasoning: 'Complex phrasing creates vocal challenges but delivers powerful emotional resonance. Acceptable tradeoff for artistic integrity.'
+    });
+  }
+  
+  // TRADEOFF 2: Lyrical Originality vs Commercial Potential
+  // When experimental language hurts mainstream appeal
+  if (scores['Lyrical Originality'] >= 8 && scores['Commercial Potential'] < 7) {
+    tradeoffs.push({
+      area: 'Tradeoff: Lyrical Originality vs Commercial Potential',
+      priority: 'Favor artistic uniqueness over commercial appeal',
+      reasoning: 'Unconventional word choices and metaphors enhance originality but may reduce mainstream accessibility. Acceptable for artistic vision.'
+    });
+  }
+  
+  // TRADEOFF 3: Sonic Density vs Melodic Flow
+  // When rich instrumentation competes with vocal phrasing
+  if (scores['Sonic Density'] >= 8 && scores['Melodic & Phonetic Flow'] < 7) {
+    tradeoffs.push({
+      area: 'Tradeoff: Sonic Density vs Melodic Flow',
+      priority: 'Balance instrumentation with vocal space',
+      reasoning: 'Dense production creates sonic richness but may overwhelm vocal phrasing. Requires careful mixing balance.'
+    });
+  }
+  
+  // TRADEOFF 4: Narrative Arc vs Hook Factor
+  // When storytelling depth reduces immediate catchiness
+  if (scores['Narrative Arc'] >= 8 && scores['Hook Factor'] < 7) {
+    tradeoffs.push({
+      area: 'Tradeoff: Narrative Arc vs Hook Factor',
+      priority: 'Favor narrative depth over instant hooks',
+      reasoning: 'Story-driven structure prioritizes emotional journey over immediate catchiness. Hooks emerge through repeated listening.'
+    });
+  }
+  
+  // TRADEOFF 5: Structure & Pacing vs Commercial Potential
+  // When unconventional structure hurts radio-friendliness
+  if (scores['Structure & Pacing'] >= 8 && scores['Commercial Potential'] < 6) {
+    tradeoffs.push({
+      area: 'Tradeoff: Structure & Pacing vs Commercial Potential',
+      priority: 'Artistic pacing over radio format',
+      reasoning: 'Non-standard structure creates unique listening experience but may not fit traditional radio formats.'
+    });
+  }
   
   return tradeoffs;
 }
