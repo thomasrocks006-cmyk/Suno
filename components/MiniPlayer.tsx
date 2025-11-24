@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAudio } from '../contexts/AudioContext';
+import { WaveformVisualizer } from './WaveformVisualizer';
 
 export const MiniPlayer: React.FC = () => {
   const { currentSong, isPlaying, togglePlay, progress, duration, setFullPlayerOpen } = useAudio();
@@ -71,10 +72,12 @@ export const MiniPlayer: React.FC = () => {
         </div>
         <div className="w-full flex items-center gap-2 text-[10px] text-gray-400">
           <span>{formatTime(progress)}</span>
-          <div className="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-white/80" 
-              style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+          <div className="flex-1 h-10 bg-gray-800/50 rounded overflow-hidden">
+            <WaveformVisualizer 
+              progress={progress} 
+              duration={duration} 
+              isPlaying={isPlaying}
+              size="mini"
             />
           </div>
           <span>{formatTime(duration)}</span>

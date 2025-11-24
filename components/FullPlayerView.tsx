@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAudio } from '../contexts/AudioContext';
+import { WaveformVisualizer } from './WaveformVisualizer';
 
 export const FullPlayerView: React.FC = () => {
   const { currentSong, isPlaying, togglePlay, progress, duration, seek, isFullPlayerOpen, setFullPlayerOpen } = useAudio();
@@ -86,15 +87,23 @@ export const FullPlayerView: React.FC = () => {
 
           {/* Progress Bar */}
           <div className="w-full mb-6 group">
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              value={progress}
-              onChange={handleSeek}
-              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-suno-primary hover:accent-suno-primary/80"
-            />
-            <div className="flex justify-between text-xs text-gray-400 mt-2 font-mono">
+            <div className="w-full h-24 bg-gray-800/50 rounded-lg overflow-hidden mb-2 relative">
+              <WaveformVisualizer 
+                progress={progress} 
+                duration={duration} 
+                isPlaying={isPlaying}
+                size="full"
+              />
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                value={progress}
+                onChange={handleSeek}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-400 font-mono">
               <span>{formatTime(progress)}</span>
               <span>{formatTime(duration)}</span>
             </div>
