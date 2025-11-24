@@ -188,22 +188,31 @@ export async function run5AgentAnalysis(
     console.log(`⚔️  Detected ${tradeoffDecisions.length} tradeoffs - triggering automatic debates...`);
     agentDebates = [];
     
+    // Check active features for context-aware voting
+    const hasAdvancedLogic = song.hasAdvancedLogic;
+    const hasMetaphorLogic = song.hasMetaphorLogic;
+    const hasCommercialMode = song.hasCommercialMode;
+    
+    console.log('🎭 Active Features:', { hasAdvancedLogic, hasMetaphorLogic, hasCommercialMode });
+    
     // Debate each tradeoff (limit to top 3 for performance)
     for (const tradeoff of tradeoffDecisions.slice(0, 3)) {
       try {
-        // Create a conceptual debate (not line-specific)
+        // Determine agent positions based on tradeoff AND active features
+        const lyricistVote = determineLyricistVote(tradeoff, lyricist, hasAdvancedLogic, hasMetaphorLogic);
+        const storytellerVote = determineStorytellerVote(tradeoff, storyteller, hasMetaphorLogic);
+        const vocalCoachVote = determineVocalCoachVote(tradeoff, vocalCoach);
+        const producerVote = determineProducerVote(tradeoff, producer, hasCommercialMode);
+        const hitmakerVote = determineHitmakerVote(tradeoff, hitmaker, hasCommercialMode, hasAdvancedLogic);
+        
         const debate: AgentDebate = {
           issue: tradeoff.area,
-          votes: [
-            { agent: 'Lyricist', position: 'COMPROMISE', reasoning: lyricist.improvementOpportunities?.[0] || 'Maintain lyrical integrity' },
-            { agent: 'Storyteller', position: 'COMPROMISE', reasoning: storyteller.narrativeArc.reasoning },
-            { agent: 'Vocal Coach', position: tradeoff.priority.includes('singability') ? 'OPPOSE' : 'SUPPORT', reasoning: vocalCoach.vocalPlayability.reasoning },
-            { agent: 'Producer', position: 'SUPPORT', reasoning: producer.sonicDensity.reasoning },
-            { agent: 'Hitmaker', position: tradeoff.priority.includes('commercial') ? 'SUPPORT' : 'COMPROMISE', reasoning: hitmaker.commercialPotential.reasoning }
-          ],
+          votes: [lyricistVote, storytellerVote, vocalCoachVote, producerVote, hitmakerVote],
           resolution: {
             decision: 'COMPROMISE',
-            rationale: tradeoff.reasoning
+            rationale: tradeoff.reasoning + (hasAdvancedLogic || hasMetaphorLogic || hasCommercialMode 
+              ? ` [Active features considered: ${[hasAdvancedLogic && 'Advanced Logic', hasMetaphorLogic && 'Central Metaphor', hasCommercialMode && 'Commercial Mode'].filter(Boolean).join(', ')}]`
+              : '')
           }
         };
         
@@ -229,6 +238,177 @@ export async function run5AgentAnalysis(
     consensusWeaknesses,
     tradeoffDecisions,
     agentDebates
+  };
+}
+
+/**
+ * AGENT VOTING LOGIC
+ * Each agent's vote considers the tradeoff type AND active features
+ */
+
+function determineLyricistVote(
+  tradeoff: any, 
+  analysis: any, 
+  hasAdvancedLogic: boolean, 
+  hasMetaphorLogic: boolean
+): { agent: 'Lyricist'; position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE'; reasoning: string } {
+  
+  // Lyricist cares about originality and complexity
+  if (tradeoff.area.includes('Originality') || tradeoff.area.includes('Lyrical')) {
+    if (hasAdvancedLogic) {
+      return {
+        agent: 'Lyricist',
+        position: 'SUPPORT',
+        reasoning: 'Advanced Lyric Logic enables sophisticated wordplay that justifies this complexity. The originality benefits outweigh accessibility concerns.'
+      };
+    }
+    if (hasMetaphorLogic) {
+      return {
+        agent: 'Lyricist',
+        position: 'SUPPORT',
+        reasoning: 'Central Metaphor Logic creates cohesive imagery that enhances lyrical uniqueness without sacrificing clarity.'
+      };
+    }
+    return {
+      agent: 'Lyricist',
+      position: 'COMPROMISE',
+      reasoning: analysis.improvementOpportunities?.[0] || 'Balance originality with accessibility to maintain lyrical integrity.'
+    };
+  }
+  
+  return {
+    agent: 'Lyricist',
+    position: 'COMPROMISE',
+    reasoning: analysis.reasoning || 'Consider lyrical implications of this tradeoff.'
+  };
+}
+
+function determineStorytellerVote(
+  tradeoff: any,
+  analysis: any,
+  hasMetaphorLogic: boolean
+): { agent: 'Storyteller'; position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE'; reasoning: string } {
+  
+  if (tradeoff.area.includes('Narrative') || tradeoff.area.includes('Emotional')) {
+    if (hasMetaphorLogic) {
+      return {
+        agent: 'Storyteller',
+        position: 'SUPPORT',
+        reasoning: 'Central Metaphor Logic strengthens narrative cohesion. Story depth is enhanced by consistent metaphorical framework.'
+      };
+    }
+    return {
+      agent: 'Storyteller',
+      position: 'COMPROMISE',
+      reasoning: analysis.narrativeArc?.reasoning || 'Narrative depth should be balanced with immediate impact.'
+    };
+  }
+  
+  return {
+    agent: 'Storyteller',
+    position: 'COMPROMISE',
+    reasoning: analysis.emotionalImpact?.reasoning || 'Consider emotional journey when making this tradeoff.'
+  };
+}
+
+function determineVocalCoachVote(
+  tradeoff: any,
+  analysis: any
+): { agent: 'Vocal Coach'; position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE'; reasoning: string } {
+  
+  if (tradeoff.area.includes('Vocal Playability') || tradeoff.area.includes('singability')) {
+    if (tradeoff.priority.includes('emotional')) {
+      return {
+        agent: 'Vocal Coach',
+        position: 'OPPOSE',
+        reasoning: 'Vocal challenges may hinder performance delivery. Complex phrasing could impact emotional transmission.'
+      };
+    }
+    return {
+      agent: 'Vocal Coach',
+      position: 'COMPROMISE',
+      reasoning: analysis.vocalPlayability?.reasoning || 'Playability issues can be managed with proper phrasing adjustments.'
+    };
+  }
+  
+  return {
+    agent: 'Vocal Coach',
+    position: 'SUPPORT',
+    reasoning: analysis.melodicFlow?.reasoning || 'This tradeoff does not significantly impact vocal performance.'
+  };
+}
+
+function determineProducerVote(
+  tradeoff: any,
+  analysis: any,
+  hasCommercialMode: boolean
+): { agent: 'Producer'; position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE'; reasoning: string } {
+  
+  if (tradeoff.area.includes('Sonic Density') || tradeoff.area.includes('Structure')) {
+    if (hasCommercialMode) {
+      return {
+        agent: 'Producer',
+        position: 'SUPPORT',
+        reasoning: 'Commercial Mode optimizes for radio-friendly structure. Production density is calibrated for mainstream appeal.'
+      };
+    }
+    return {
+      agent: 'Producer',
+      position: 'COMPROMISE',
+      reasoning: analysis.sonicDensity?.reasoning || 'Production choices should serve the song\'s artistic vision.'
+    };
+  }
+  
+  return {
+    agent: 'Producer',
+    position: 'SUPPORT',
+    reasoning: analysis.structurePacing?.reasoning || 'Production supports this artistic direction.'
+  };
+}
+
+function determineHitmakerVote(
+  tradeoff: any,
+  analysis: any,
+  hasCommercialMode: boolean,
+  hasAdvancedLogic: boolean
+): { agent: 'Hitmaker'; position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE'; reasoning: string } {
+  
+  if (tradeoff.area.includes('Commercial')) {
+    if (hasCommercialMode) {
+      return {
+        agent: 'Hitmaker',
+        position: 'SUPPORT',
+        reasoning: 'Commercial Mode is enabled - prioritizing mainstream appeal and radio-friendliness over artistic complexity.'
+      };
+    }
+    if (hasAdvancedLogic) {
+      return {
+        agent: 'Hitmaker',
+        position: 'COMPROMISE',
+        reasoning: 'Advanced Lyric Logic may reduce immediate accessibility, but sophisticated listeners will appreciate the depth. Target niche audience.'
+      };
+    }
+    return {
+      agent: 'Hitmaker',
+      position: 'OPPOSE',
+      reasoning: 'Commercial viability is sacrificed for artistic expression. This limits mainstream potential.'
+    };
+  }
+  
+  if (tradeoff.area.includes('Hook Factor')) {
+    if (hasCommercialMode) {
+      return {
+        agent: 'Hitmaker',
+        position: 'OPPOSE',
+        reasoning: 'Commercial Mode demands strong hooks. Narrative depth shouldn\'t compromise catchiness.'
+      };
+    }
+  }
+  
+  return {
+    agent: 'Hitmaker',
+    position: 'COMPROMISE',
+    reasoning: analysis.commercialPotential?.reasoning || 'Balance artistic vision with commercial viability.'
   };
 }
 

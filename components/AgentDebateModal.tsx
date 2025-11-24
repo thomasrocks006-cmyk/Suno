@@ -2,363 +2,414 @@
  * AGENT DEBATE MODAL
  * 
  * Animated visualization showing 5 agents analyzing and debating the generated song.
- * Appears automatically after "Generate Suno Assets" button is clicked.
+ * Displays when advanced features are enabled and shows their impact on agent decisions.
  * 
- * PHASES:
- * 1. Generation phase (Main Generator working)
- * 2. Analysis phase (5 agents analyzing in parallel)
- * 3. Debate phase (Agents discuss conflicts)
- * 4. Resolution phase (Judge synthesizes final verdict)
- * 5. Results summary
+ * FEATURES DISPLAYED:
+ * - Advanced Lyric Logic: Sophisticated rhyme schemes, wordplay patterns
+ * - Central Metaphor Logic: Extended metaphor consistency
+ * - Commercial Mode: Radio-friendly structure and hooks
+ * 
+ * FLOW:
+ * 1. Modal opens when analysis starts (song has no analysis yet)
+ * 2. Shows "Analyzing..." with active features highlighted
+ * 3. Analysis completes → debates appear with agent votes
+ * 4. Shows consensus strengths
+ * 5. Confetti celebration
  */
 
 import React, { useState, useEffect } from 'react';
-import { GeneratedSong } from '../types';
+import { GeneratedSong, AgentDebate } from '../types';
 
 interface AgentDebateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  phase: 'generating' | 'analyzing' | 'debating' | 'resolving' | 'complete';
-  currentAgent?: string;
-  agentProgress?: { agent: string; status: 'pending' | 'working' | 'done'; opinion?: string }[];
-  debates?: {
-    line: string;
-    votes: { agent: string; position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE'; reasoning: string }[];
-    resolution?: string;
-  }[];
-  finalScore?: number;
-  consensusStrengths?: string[];
-  consensusWeaknesses?: string[];
+  song: GeneratedSong;
+  debates: AgentDebate[];
+  consensusItems: string[];
+  onComplete: () => void;
 }
 
-export default function AgentDebateModal({
+export function AgentDebateModal({
   isOpen,
   onClose,
-  phase,
-  currentAgent,
-  agentProgress = [],
-  debates = [],
-  finalScore,
-  consensusStrengths = [],
-  consensusWeaknesses = []
+  song,
+  debates,
+  consensusItems,
+  onComplete
 }: AgentDebateModalProps) {
+  // Determine current stage based on available data
+  const hasAnalysis = !!song.analysis;
+  const hasDebates = debates.length > 0;
+  
+  const [stage, setStage] = useState<'analyzing' | 'debating' | 'consensus' | 'complete'>('analyzing');
   const [visibleDebates, setVisibleDebates] = useState(0);
-  const [animatingVotes, setAnimatingVotes] = useState<{ [key: number]: number }>({});
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Stage progression logic
+  useEffect(() => {
+    if (!hasAnalysis) {
+      setStage('analyzing');
+    } else if (hasDebates && visibleDebates < debates.length) {
+      setStage('debating');
+    } else if (hasDebates) {
+      setStage('consensus');
+      // Auto-advance to complete after showing consensus
+      const timer = setTimeout(() => setStage('complete'), 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setStage('complete');
+    }
+  }, [hasAnalysis, hasDebates, visibleDebates, debates.length]);
 
   // Animate debates appearing one by one
   useEffect(() => {
-    if (phase === 'debating' && debates.length > 0) {
-      const timer = setInterval(() => {
-        setVisibleDebates(prev => {
-          if (prev < debates.length) return prev + 1;
-          clearInterval(timer);
-          return prev;
-        });
-      }, 1500);
-      return () => clearInterval(timer);
+    if (stage === 'debating' && visibleDebates < debates.length) {
+      const timer = setTimeout(() => {
+        setVisibleDebates(prev => prev + 1);
+      }, 1000);
+      return () => clearTimeout(timer);
     }
-  }, [phase, debates.length]);
+  }, [stage, visibleDebates, debates.length]);
 
-  // Animate votes appearing for each debate
+  // Trigger confetti on complete
   useEffect(() => {
-    if (visibleDebates > 0) {
-      const debateIndex = visibleDebates - 1;
-      let voteIndex = 0;
-      const timer = setInterval(() => {
-        if (voteIndex < (debates[debateIndex]?.votes.length || 0)) {
-          setAnimatingVotes(prev => ({
-            ...prev,
-            [debateIndex]: voteIndex
-          }));
-          voteIndex++;
-        } else {
-          clearInterval(timer);
-        }
-      }, 400);
-      return () => clearInterval(timer);
+    if (stage === 'complete') {
+      setShowConfetti(true);
+      const timer = setTimeout(() => setShowConfetti(false), 5000);
+      return () => clearTimeout(timer);
     }
-  }, [visibleDebates, debates]);
+  }, [stage]);
 
   if (!isOpen) return null;
 
-  const getAgentIcon = (agent: string) => {
-    const icons: { [key: string]: string } = {
-      'Hitmaker': '🎯',
-      'Lyricist': '✍️',
-      'Storyteller': '📖',
-      'Vocal Coach': '🎙️',
-      'Producer': '🎚️',
-      'Judge': '⚖️'
-    };
-    return icons[agent] || '🤖';
+  const agents = [
+    { name: 'Hitmaker', icon: '🎯', color: 'from-yellow-500 to-orange-500' },
+    { name: 'Lyricist', icon: '✍️', color: 'from-blue-500 to-cyan-500' },
+    { name: 'Storyteller', icon: '📖', color: 'from-purple-500 to-pink-500' },
+    { name: 'Vocal Coach', icon: '🎙️', color: 'from-green-500 to-teal-500' },
+    { name: 'Producer', icon: '🎚️', color: 'from-red-500 to-pink-500' }
+  ];
+
+  const getAgentStatus = (agentName: string) => {
+    if (stage === 'analyzing') return 'analyzing';
+    if (stage === 'debating') {
+      // Check if this agent has voted in visible debates
+      const hasVoted = debates.slice(0, visibleDebates).some(debate => 
+        debate.votes.some(v => v.agent === agentName)
+      );
+      return hasVoted ? 'complete' : 'analyzing';
+    }
+    return 'complete';
   };
 
-  const getAgentColor = (agent: string) => {
-    const colors: { [key: string]: string } = {
-      'Hitmaker': 'from-yellow-500 to-orange-500',
-      'Lyricist': 'from-blue-500 to-cyan-500',
-      'Storyteller': 'from-purple-500 to-pink-500',
-      'Vocal Coach': 'from-green-500 to-emerald-500',
-      'Producer': 'from-red-500 to-rose-500',
-      'Judge': 'from-gray-600 to-gray-800'
-    };
-    return colors[agent] || 'from-gray-500 to-gray-700';
+  const getPositionColor = (position: string) => {
+    switch (position) {
+      case 'SUPPORT': return 'text-green-400';
+      case 'OPPOSE': return 'text-red-400';
+      case 'COMPROMISE': return 'text-yellow-400';
+      default: return 'text-gray-400';
+    }
   };
 
-  const getPositionIcon = (position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE') => {
-    if (position === 'SUPPORT') return '✅';
-    if (position === 'OPPOSE') return '❌';
-    return '🤝';
+  const getPositionIcon = (position: string) => {
+    switch (position) {
+      case 'SUPPORT': return '✓';
+      case 'OPPOSE': return '✗';
+      case 'COMPROMISE': return '⚖';
+      default: return '?';
+    }
   };
 
-  const getPositionColor = (position: 'SUPPORT' | 'OPPOSE' | 'COMPROMISE') => {
-    if (position === 'SUPPORT') return 'text-green-400 bg-green-500/20 border-green-500/40';
-    if (position === 'OPPOSE') return 'text-red-400 bg-red-500/20 border-red-500/40';
-    return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/40';
-  };
+  // Check which advanced features are enabled
+  const activeFeatures = [];
+  if (song.hasAdvancedLogic) activeFeatures.push({ name: 'Advanced Lyric Logic', icon: '🎭', desc: 'Complex rhyme schemes & wordplay' });
+  if (song.hasMetaphorLogic) activeFeatures.push({ name: 'Central Metaphor', icon: '🌟', desc: 'Extended metaphor consistency' });
+  if (song.hasCommercialMode) activeFeatures.push({ name: 'Commercial Mode', icon: '📻', desc: 'Radio-friendly optimization' });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-5xl max-h-[90vh] bg-gradient-to-br from-gray-900 via-gray-800 to-black border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden">
-        
-        {/* Header with glowing effect */}
-        <div className="relative bg-gradient-to-r from-cyan-600/20 via-purple-600/20 to-pink-600/20 border-b border-white/10 p-6">
-          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-pink-500/10 animate-pulse"></div>
-          <div className="relative flex items-center justify-between">
+    <>
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 animate-fadeIn"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div 
+          className="bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-purple-500/30 pointer-events-auto animate-slideInUp"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="bg-black/40 px-6 py-4 border-b border-white/10 flex items-center justify-between">
             <div>
-              <h2 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-                🎭 Agent Analysis Chamber
-                {phase === 'complete' && <span className="text-2xl">✨</span>}
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                <span className="text-3xl">🎭</span>
+                Agent Analysis
               </h2>
-              <p className="text-gray-300 text-sm">
-                {phase === 'generating' && '🎵 Crafting your masterpiece...'}
-                {phase === 'analyzing' && '🔍 5 specialist agents analyzing...'}
-                {phase === 'debating' && '💬 Agents debating improvements...'}
-                {phase === 'resolving' && '⚖️ Judge synthesizing final verdict...'}
-                {phase === 'complete' && '✅ Analysis complete!'}
+              <p className="text-sm text-gray-400 mt-1">
+                {stage === 'analyzing' && 'Specialists evaluating your song...'}
+                {stage === 'debating' && `Debating ${debates.length} tradeoff${debates.length > 1 ? 's' : ''}...`}
+                {stage === 'consensus' && 'Reaching consensus on strengths...'}
+                {stage === 'complete' && '✨ Analysis complete!'}
               </p>
             </div>
-            {phase === 'complete' && (
-              <button
-                onClick={onClose}
-                className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white rounded-lg font-bold transition-all hover:scale-105 shadow-lg"
-              >
-                View Results →
-              </button>
-            )}
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-        </div>
 
-        {/* Scrollable content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-120px)] p-6 space-y-6">
-          
-          {/* PHASE 1: GENERATING */}
-          {phase === 'generating' && (
-            <div className="flex flex-col items-center justify-center py-12 space-y-6">
-              <div className="relative">
-                <div className="w-32 h-32 rounded-full bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 animate-spin"></div>
-                <div className="absolute inset-2 rounded-full bg-gray-900 flex items-center justify-center">
-                  <span className="text-6xl animate-pulse">🎵</span>
+          {/* Content */}
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-100px)] custom-scrollbar">
+            
+            {/* Active Features Banner (if any features enabled) */}
+            {activeFeatures.length > 0 && (
+              <div className="mb-6 bg-gradient-to-r from-purple-900/40 to-blue-900/40 rounded-xl p-4 border border-purple-500/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">⚡</span>
+                  <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wide">Active Features</h3>
                 </div>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white mb-2">Generating Song Assets</p>
-                <p className="text-gray-400">Main Generator is creating your lyrics, style prompt, and cover art...</p>
-              </div>
-              <div className="flex gap-2">
-                <div className="w-3 h-3 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-3 h-3 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-3 h-3 rounded-full bg-pink-500 animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
-            </div>
-          )}
-
-          {/* PHASE 2: ANALYZING */}
-          {(phase === 'analyzing' || phase === 'debating' || phase === 'resolving' || phase === 'complete') && (
-            <div>
-              <h3 className="text-xl font-bold text-cyan-400 mb-4 flex items-center gap-2">
-                <span className={phase === 'analyzing' ? 'animate-pulse' : ''}>🔍</span>
-                5-Agent Parallel Analysis
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {agentProgress.map((agent, idx) => (
-                  <div
-                    key={agent.agent}
-                    className={`relative overflow-hidden rounded-xl border transition-all duration-500 ${
-                      agent.status === 'done'
-                        ? 'bg-gradient-to-br from-green-900/30 to-emerald-900/30 border-green-500/50'
-                        : agent.status === 'working'
-                        ? 'bg-gradient-to-br from-cyan-900/30 to-blue-900/30 border-cyan-500/50 animate-pulse'
-                        : 'bg-gray-800/30 border-gray-700/30'
-                    }`}
-                    style={{ animationDelay: `${idx * 100}ms` }}
-                  >
-                    {/* Animated background for working agent */}
-                    {agent.status === 'working' && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent animate-shimmer"></div>
-                    )}
-                    
-                    <div className="relative p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-3xl">{getAgentIcon(agent.agent)}</span>
-                          <span className="font-bold text-white">{agent.agent}</span>
-                        </div>
-                        {agent.status === 'done' && <span className="text-green-400 text-xl">✓</span>}
-                        {agent.status === 'working' && (
-                          <div className="flex gap-1">
-                            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
-                            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" style={{ animationDelay: '200ms' }}></div>
-                            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" style={{ animationDelay: '400ms' }}></div>
-                          </div>
-                        )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {activeFeatures.map(feature => (
+                    <div key={feature.name} className="bg-black/30 rounded-lg p-3 border border-purple-500/20">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-2xl">{feature.icon}</span>
+                        <span className="text-xs font-bold text-purple-200">{feature.name}</span>
                       </div>
-                      {agent.opinion && (
-                        <p className="text-xs text-gray-300 italic line-clamp-2">&quot;{agent.opinion}&quot;</p>
+                      <p className="text-xs text-gray-400">{feature.desc}</p>
+                      {stage === 'analyzing' && (
+                        <div className="mt-2 h-1 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 animate-shimmer" style={{ width: '200%' }} />
+                        </div>
                       )}
-                      {!agent.opinion && agent.status === 'pending' && (
-                        <p className="text-xs text-gray-500">Waiting...</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-3 italic">
+                  ℹ️ Agents will consider these features when analyzing tradeoffs
+                </p>
+              </div>
+            )}
+
+            {/* Agent Cards */}
+            <div className="grid grid-cols-5 gap-3 mb-6">
+              {agents.map(agent => {
+                const status = getAgentStatus(agent.name);
+                return (
+                  <div 
+                    key={agent.name}
+                    className="bg-black/30 rounded-xl p-3 border border-white/10 text-center"
+                  >
+                    <div className={`w-16 h-16 mx-auto mb-2 rounded-full bg-gradient-to-br ${agent.color} flex items-center justify-center text-3xl ${status === 'analyzing' ? 'animate-pulse' : ''}`}>
+                      {agent.icon}
+                    </div>
+                    <p className="text-xs font-bold text-white mb-1">{agent.name}</p>
+                    <div className="flex items-center justify-center gap-1">
+                      {status === 'analyzing' && (
+                        <>
+                          <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-ping" />
+                          <span className="text-xs text-yellow-400">Analyzing</span>
+                        </>
+                      )}
+                      {status === 'complete' && (
+                        <>
+                          <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+                          <span className="text-xs text-green-400">Done</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Stage Indicator */}
+            <div className="mb-6 flex items-center justify-center gap-4">
+              {['analyzing', 'debating', 'consensus', 'complete'].map((s, idx) => (
+                <div key={s} className="flex items-center">
+                  <div className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                    stage === s 
+                      ? 'bg-purple-600 text-white scale-110' 
+                      : idx < ['analyzing', 'debating', 'consensus', 'complete'].indexOf(stage)
+                      ? 'bg-green-900/50 text-green-400'
+                      : 'bg-gray-800 text-gray-500'
+                  }`}>
+                    {s === 'analyzing' && '🔍 Analysis'}
+                    {s === 'debating' && '💬 Debate'}
+                    {s === 'consensus' && '🤝 Consensus'}
+                    {s === 'complete' && '✅ Complete'}
+                  </div>
+                  {idx < 3 && (
+                    <div className={`w-8 h-0.5 ${idx < ['analyzing', 'debating', 'consensus', 'complete'].indexOf(stage) ? 'bg-green-400' : 'bg-gray-700'}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Debates Section */}
+            {debates.length > 0 && (stage === 'debating' || stage === 'consensus' || stage === 'complete') && (
+              <div className="space-y-4 mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span className="text-2xl">⚔️</span>
+                  Tradeoff Debates ({debates.length})
+                </h3>
+                {debates.slice(0, visibleDebates).map((debate, idx) => (
+                  <div 
+                    key={idx}
+                    className="bg-gradient-to-br from-orange-900/20 to-red-900/20 rounded-xl p-4 border border-orange-500/30 animate-slideInUp"
+                  >
+                    <h4 className="text-sm font-bold text-orange-200 mb-3">{debate.issue}</h4>
+                    
+                    {/* Vote Summary */}
+                    <div className="flex items-center gap-4 mb-3 text-xs">
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-400 font-bold">{debate.votes.filter(v => v.position === 'SUPPORT').length}</span>
+                        <span className="text-gray-400">Support</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-red-400 font-bold">{debate.votes.filter(v => v.position === 'OPPOSE').length}</span>
+                        <span className="text-gray-400">Oppose</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-yellow-400 font-bold">{debate.votes.filter(v => v.position === 'COMPROMISE').length}</span>
+                        <span className="text-gray-400">Compromise</span>
+                      </div>
+                    </div>
+
+                    {/* Agent Votes */}
+                    <div className="space-y-2 mb-3">
+                      {debate.votes.map((vote, vIdx) => (
+                        <div 
+                          key={vIdx}
+                          className="bg-black/40 rounded-lg p-2 border border-white/5 animate-fadeIn"
+                          style={{ animationDelay: `${vIdx * 100}ms` }}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="text-lg">
+                              {agents.find(a => a.name === vote.agent)?.icon || '🤖'}
+                            </span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold text-white">{vote.agent}</span>
+                                <span className={`text-xs font-bold ${getPositionColor(vote.position)}`}>
+                                  {getPositionIcon(vote.position)} {vote.position}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-400">{vote.reasoning}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Resolution */}
+                    <div className="bg-purple-900/30 rounded-lg p-3 border border-purple-500/30">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm">⚖️</span>
+                        <span className="text-xs font-bold text-purple-300">Resolution: {debate.resolution.decision}</span>
+                      </div>
+                      <p className="text-xs text-gray-300">{debate.resolution.rationale}</p>
+                      {activeFeatures.length > 0 && (
+                        <p className="text-xs text-purple-400 italic mt-2">
+                          💡 Decision influenced by active features: {activeFeatures.map(f => f.name).join(', ')}
+                        </p>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* PHASE 3: DEBATING */}
-          {(phase === 'debating' || phase === 'resolving' || phase === 'complete') && debates.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-xl font-bold text-purple-400 mb-4 flex items-center gap-2">
-                <span className={phase === 'debating' ? 'animate-bounce' : ''}>💬</span>
-                Agent Debates ({debates.length} {debates.length === 1 ? 'Conflict' : 'Conflicts'})
-              </h3>
-              
-              {debates.slice(0, visibleDebates).map((debate, debateIdx) => (
-                <div
-                  key={debateIdx}
-                  className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-500/30 rounded-xl p-4 space-y-3 animate-slideInUp"
-                  style={{ animationDelay: `${debateIdx * 200}ms` }}
-                >
-                  {/* Debate topic */}
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl mt-1">🎯</span>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-400 mb-1">Line in question:</p>
-                      <p className="text-white font-medium italic">&quot;{debate.line}&quot;</p>
-                    </div>
-                  </div>
-
-                  {/* Agent votes */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {debate.votes.slice(0, (animatingVotes[debateIdx] || 0) + 1).map((vote, voteIdx) => (
-                      <div
-                        key={voteIdx}
-                        className={`p-3 rounded-lg border transition-all duration-300 ${getPositionColor(vote.position)} animate-fadeIn`}
-                        style={{ animationDelay: `${voteIdx * 100}ms` }}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xl">{getAgentIcon(vote.agent)}</span>
-                          <span className="font-bold text-sm text-white">{vote.agent}</span>
-                          <span className="ml-auto text-xl">{getPositionIcon(vote.position)}</span>
-                        </div>
-                        <p className="text-xs text-gray-300 line-clamp-2">{vote.reasoning}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Resolution (if available) */}
-                  {debate.resolution && (
-                    <div className="mt-3 p-3 bg-gradient-to-r from-gray-700/40 to-gray-800/40 border border-gray-600/50 rounded-lg animate-fadeIn">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xl">⚖️</span>
-                        <span className="font-bold text-yellow-400">Judge&apos;s Resolution</span>
-                      </div>
-                      <p className="text-sm text-gray-200">{debate.resolution}</p>
-                    </div>
-                  )}
+            {/* No Debates Message */}
+            {debates.length === 0 && (stage === 'consensus' || stage === 'complete') && (
+              <div className="bg-green-900/20 rounded-xl p-4 border border-green-500/30 mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">✨</span>
+                  <h3 className="text-lg font-bold text-green-300">No Conflicts Detected</h3>
                 </div>
-              ))}
-            </div>
-          )}
+                <p className="text-sm text-gray-300">
+                  All agents are in agreement! The song achieves excellent balance across all scoring categories.
+                  {activeFeatures.length > 0 && ' Your active features are working harmoniously together.'}
+                </p>
+              </div>
+            )}
 
-          {/* PHASE 4: RESOLVING */}
-          {phase === 'resolving' && (
-            <div className="flex flex-col items-center justify-center py-8 space-y-4">
-              <div className="relative">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-r from-yellow-500 to-orange-500 animate-pulse"></div>
-                <div className="absolute inset-2 rounded-full bg-gray-900 flex items-center justify-center">
-                  <span className="text-4xl">⚖️</span>
+            {/* Consensus Strengths */}
+            {consensusItems.length > 0 && (stage === 'consensus' || stage === 'complete') && (
+              <div className="bg-gradient-to-br from-green-900/20 to-blue-900/20 rounded-xl p-4 border border-green-500/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-2xl">💪</span>
+                  <h3 className="text-lg font-bold text-green-300">Consensus Strengths</h3>
+                </div>
+                <ul className="space-y-2">
+                  {consensusItems.slice(0, 5).map((item, idx) => (
+                    <li 
+                      key={idx}
+                      className="text-sm text-gray-300 flex items-start gap-2 animate-fadeIn"
+                      style={{ animationDelay: `${idx * 100}ms` }}
+                    >
+                      <span className="text-green-400 mt-0.5">✓</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Final Score (if available) */}
+            {song.analysis && stage === 'complete' && (
+              <div className="mt-6 text-center">
+                <div className="inline-block bg-gradient-to-br from-purple-600 to-blue-600 rounded-2xl px-8 py-4">
+                  <p className="text-sm text-purple-200 mb-1">Overall Score</p>
+                  <p className="text-5xl font-bold text-white">{song.analysis.overallScore}</p>
+                  <p className="text-xs text-purple-200 mt-1">/ 10</p>
                 </div>
               </div>
-              <p className="text-xl font-bold text-white">Judge Synthesizing Final Verdict...</p>
-              <p className="text-gray-400 text-center max-w-md">
-                The Judge is weighing all perspectives and creating the optimal path forward
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* PHASE 5: COMPLETE */}
-          {phase === 'complete' && (
-            <div className="space-y-6">
-              {/* Final Score */}
-              <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 border border-cyan-500/50 rounded-xl p-6 text-center">
-                <p className="text-gray-300 mb-2">Final Analysis Score</p>
-                <div className="text-6xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent animate-pulse">
-                  {finalScore}/100
-                </div>
-              </div>
-
-              {/* Consensus Strengths */}
-              {consensusStrengths.length > 0 && (
-                <div className="bg-gradient-to-br from-green-900/20 to-emerald-900/20 border border-green-500/30 rounded-xl p-4">
-                  <h4 className="text-lg font-bold text-green-400 mb-3 flex items-center gap-2">
-                    <span>💪</span> Consensus Strengths
-                  </h4>
-                  <ul className="space-y-2">
-                    {consensusStrengths.slice(0, 5).map((strength, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-gray-200 animate-fadeIn" style={{ animationDelay: `${idx * 100}ms` }}>
-                        <span className="text-green-400 mt-1">✓</span>
-                        <span className="text-sm">{strength}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Consensus Weaknesses */}
-              {consensusWeaknesses.length > 0 && (
-                <div className="bg-gradient-to-br from-red-900/20 to-rose-900/20 border border-red-500/30 rounded-xl p-4">
-                  <h4 className="text-lg font-bold text-red-400 mb-3 flex items-center gap-2">
-                    <span>⚠️</span> Areas for Improvement
-                  </h4>
-                  <ul className="space-y-2">
-                    {consensusWeaknesses.slice(0, 5).map((weakness, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-gray-200 animate-fadeIn" style={{ animationDelay: `${idx * 100}ms` }}>
-                        <span className="text-red-400 mt-1">→</span>
-                        <span className="text-sm">{weakness}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Call to action */}
-              <div className="text-center py-4">
+            {/* Complete Button */}
+            {stage === 'complete' && (
+              <div className="mt-6 text-center">
                 <button
-                  onClick={onClose}
-                  className="px-8 py-4 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 hover:from-cyan-600 hover:via-purple-600 hover:to-pink-600 text-white rounded-xl font-bold text-lg transition-all hover:scale-105 shadow-2xl animate-pulse"
+                  onClick={() => {
+                    onComplete();
+                    onClose();
+                  }}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-8 py-3 rounded-full font-bold text-sm transition-all hover:scale-105 shadow-lg"
                 >
-                  View Full Analysis →
+                  View Full Results
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Custom animations */}
-      <style jsx>{`
+      {/* Confetti Effect */}
+      {showConfetti && (
+        <div className="fixed inset-0 z-[60] pointer-events-none">
+          {[...Array(50)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-2 h-2 animate-confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `-10px`,
+                backgroundColor: ['#f59e0b', '#8b5cf6', '#10b981', '#3b82f6', '#ec4899'][Math.floor(Math.random() * 5)],
+                animationDelay: `${Math.random() * 2}s`,
+                animationDuration: `${2 + Math.random() * 2}s`
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -375,7 +426,17 @@ export default function AgentDebateModal({
         }
         @keyframes shimmer {
           0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
+          100% { transform: translateX(200%); }
+        }
+        @keyframes confetti {
+          0% { 
+            transform: translateY(0) rotate(0deg);
+            opacity: 1;
+          }
+          100% { 
+            transform: translateY(100vh) rotate(720deg);
+            opacity: 0;
+          }
         }
         .animate-fadeIn {
           animation: fadeIn 0.5s ease-out forwards;
@@ -386,7 +447,26 @@ export default function AgentDebateModal({
         .animate-shimmer {
           animation: shimmer 2s infinite;
         }
+        .animate-confetti {
+          animation: confetti 3s ease-out forwards;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(139, 92, 246, 0.5);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(139, 92, 246, 0.7);
+        }
       `}</style>
-    </div>
+    </>
   );
 }
+
+export default AgentDebateModal;
