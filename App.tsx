@@ -13,6 +13,7 @@ import { SongInputs, GeneratedSong, StructureType } from './types';
 // Lazy load heavy modal components for better initial bundle size
 const ValidationDashboard = lazy(() => import('./components/ValidationDashboard').then(m => ({ default: m.ValidationDashboard })));
 const LearningInsightsDashboard = lazy(() => import('./components/LearningInsightsDashboard').then(m => ({ default: m.LearningInsightsDashboard })));
+const CostDashboard = lazy(() => import('./components/CostDashboard').then(m => ({ default: m.default })));
 
 const INITIAL_INPUTS: SongInputs = {
   artistReference: '',
@@ -43,10 +44,19 @@ export default function App() {
   const [isInputPanelOpen, setIsInputPanelOpen] = useState(true);
   const [showValidationDashboard, setShowValidationDashboard] = useState(false);
   const [showLearningDashboard, setShowLearningDashboard] = useState(false);
+  const [showCostDashboard, setShowCostDashboard] = useState(false);
   
   // Agent Debate Modal state
   const [showDebateModal, setShowDebateModal] = useState(false);
   const [debateSong, setDebateSong] = useState<GeneratedSong | null>(null);
+  
+  // Ref to track current song ID for race condition fix (BUG-001)
+  const currentSongIdRef = React.useRef<string | null>(null);
+  
+  // Update ref whenever currentSong changes
+  React.useEffect(() => {
+    currentSongIdRef.current = currentSong?.id || null;
+  }, [currentSong]);
 
   // Handle persistence of history
   useEffect(() => {
@@ -54,9 +64,11 @@ export default function App() {
     if (savedHistory) {
       try {
         const parsed = JSON.parse(savedHistory);
-        setHistory(parsed);
-        if (parsed.length > 0) {
-          setCurrentSong(parsed[0]);
+        // Limit history to 50 songs to prevent memory issues (ISSUE-001 fix)
+        const limitedHistory = parsed.slice(0, 50);
+        setHistory(limitedHistory);
+        if (limitedHistory.length > 0) {
+          setCurrentSong(limitedHistory[0]);
         }
       } catch (e) {
         console.error("Failed to load history", e);
@@ -65,7 +77,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('suno_architect_history', JSON.stringify(history));
+    // Limit history to 50 songs before saving (ISSUE-001 fix)
+    const limitedHistory = history.slice(0, 50);
+    localStorage.setItem('suno_architect_history', JSON.stringify(limitedHistory));
   }, [history]);
 
   const handleSubmit = async () => {
@@ -94,9 +108,11 @@ export default function App() {
 
   // Helper to run analysis and update state when done
   const triggerBackgroundAnalysis = async (songToAnalyze: GeneratedSong) => {
-    // Show debate modal immediately when analysis starts
-    setDebateSong(songToAnalyze);
-    setShowDebateModal(true);
+    // Store the song ID we're analyzing
+    const analyzingSongId = songToAnalyze.id;
+    
+    // Don't show modal immediately - wait for first debate data (BUG-002 fix)
+    // Modal will be shown when we have actual debate data
     
     try {
       // Check if this is a V2/Revision and find parent for comparison
@@ -127,15 +143,22 @@ export default function App() {
       
       setHistory(prev => prev.map(s => s.id === songToAnalyze.id ? updatedSong : s));
       
-      // Only update currentSong if the user is still looking at it
-      setCurrentSong(current => current?.id === songToAnalyze.id ? updatedSong : current);
-      
-      // Update debate modal with final results
-      setDebateSong(updatedSong);
+      // Only update currentSong if the user is still looking at it (BUG-001 fix)
+      // Use ref to avoid stale closure
+      if (currentSongIdRef.current === analyzingSongId) {
+        setCurrentSong(updatedSong);
+        
+        // Show modal with debate data if debates exist
+        if (result.agentDebates && result.agentDebates.length > 0) {
+          setDebateSong(updatedSong);
+          setShowDebateModal(true);
+        }
+      }
       
     } catch (analysisError) {
       console.error("Background analysis failed:", analysisError);
-      setError("Analysis failed. Please try again.");
+      // Show error to user (ISSUE-002 fix)
+      setError("Analysis failed. Some features may be unavailable.");
       setShowDebateModal(false); // Close modal on error
     }
   };
@@ -226,6 +249,13 @@ export default function App() {
             <span className="text-xl font-bold tracking-tight">Suno v5 <span className="text-suno-primary font-light">Architect</span></span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCostDashboard(true)}
+              className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-300 text-xs font-semibold transition-colors"
+              title="View Cost Dashboard"
+            >
+              💰 Costs
+            </button>
             <button
               onClick={() => setShowLearningDashboard(true)}
               className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold transition-colors"
@@ -342,6 +372,11 @@ export default function App() {
       <FullPlayerView />
       
       {/* Modal Overlays */}
+      {showCostDashboard && (
+        <Suspense fallback={<SkeletonLoader type="dashboard" />}>
+          <CostDashboard onClose={() => setShowCostDashboard(false)} />
+        </Suspense>
+      )}
       {showValidationDashboard && (
         <Suspense fallback={<SkeletonLoader type="dashboard" />}>
           <ValidationDashboard onClose={() => setShowValidationDashboard(false)} />

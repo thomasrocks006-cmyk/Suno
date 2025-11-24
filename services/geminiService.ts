@@ -3,6 +3,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { SongInputs, GeneratedSong, StructureType, AnalysisResponse, SongAnalysis, SongVariation, InferredAttributes, EvaluationResult, FIXED_SCORING_CATEGORIES } from "../types";
 import { validateCompleteWorkflow, generateValidatedPlan, WorkflowState } from "./planValidationService";
 import { getCachedAnalysis, setCachedAnalysis, clearExpiredCache } from "./cacheService";
+import { trackGeneration, trackAnalysis, trackRewrite, trackVariation } from "./costTrackingService";
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -843,6 +844,9 @@ export const generateSongAssets = async (inputs: SongInputs): Promise<GeneratedS
       }
     }
 
+    // Track cost for generation
+    trackGeneration(generatedSong.id, generatedSong.title);
+
     return generatedSong;
   } catch (error) {
     console.error("Gemini Generation Error:", error);
@@ -1151,6 +1155,9 @@ export const analyzeGeneratedSong = async (
     console.log(`  ${score.category}: ${score.score}/10 [${score.agent}]`);
   });
   
+  // Track cost for analysis
+  trackAnalysis(song.id, song.title);
+  
   return { analysis, agentDebates: agentAnalysis.agentDebates };
 };
 
@@ -1276,6 +1283,9 @@ export const rewriteSongWithImprovements = async (
   
   console.log('📋 REWRITE EXECUTION PLAN:', JSON.stringify(result.executionPlan, null, 2));
   
+  // Track cost for rewrite
+  trackRewrite(song.id, song.title, useProModel);
+  
   return {
     ...song,
     lyrics: result.lyrics,
@@ -1344,6 +1354,10 @@ export const generateSongVariations = async (song: GeneratedSong): Promise<SongV
 
   if (!response.text) throw new Error("Variation generation failed");
   const result = JSON.parse(response.text);
+  
+  // Track cost for variations
+  trackVariation(song.id, song.title);
+  
   return result.variations;
 };
 
