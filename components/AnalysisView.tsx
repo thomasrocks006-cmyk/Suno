@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GeneratedSong, SongVariation, RewritePlanProposal } from '../types';
 import { LiveRewritePlan } from './LiveRewritePlan';
 import { type AgentCoverageReport } from '../services/agentCoverageService';
+import { SongInsightsPanel } from './SongInsightsPanel';
 
 interface ProgressBarProps {
   isRunning: boolean;
@@ -201,6 +202,11 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Song Insights Panel - NEW */}
+      <div className="bg-gradient-to-br from-purple-900/10 to-blue-900/10 p-4 md:p-6 rounded-lg border border-purple-500/10">
+        <SongInsightsPanel song={song} />
+      </div>
 
       {/* Score Section */}
       <div className="flex items-center gap-3 md:gap-6 bg-black/30 p-3 md:p-4 rounded-xl border border-white/5">
