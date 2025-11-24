@@ -6,7 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import { MiniPlayer } from './components/MiniPlayer';
 import { FullPlayerView } from './components/FullPlayerView';
 import { SkeletonLoader } from './components/SkeletonLoader';
-import { AgentDebateModal } from './components/AgentDebateModal';
+import AgentDebateModal from './components/AgentDebateModal';
 import { SongInputs, GeneratedSong, StructureType } from './types';
 
 // Lazy load heavy modal components for better initial bundle size
@@ -93,6 +93,10 @@ export default function App() {
 
   // Helper to run analysis and update state when done
   const triggerBackgroundAnalysis = async (songToAnalyze: GeneratedSong) => {
+    // Show debate modal immediately when analysis starts
+    setDebateSong(songToAnalyze);
+    setShowDebateModal(true);
+    
     try {
       // Check if this is a V2/Revision and find parent for comparison
       let parentLyrics: string | undefined;
@@ -116,8 +120,12 @@ export default function App() {
       // Only update currentSong if the user is still looking at it
       setCurrentSong(current => current?.id === songToAnalyze.id ? updatedSong : current);
       
+      // Update debate modal with final results
+      setDebateSong(updatedSong);
+      
     } catch (analysisError) {
       console.warn("Background analysis failed:", analysisError);
+      setShowDebateModal(false); // Close modal on error
     }
   };
 
@@ -247,28 +255,28 @@ export default function App() {
           {isInputPanelOpen && (
             <div className="flex-shrink-0 bg-black/10 border-r border-white/5 overflow-y-auto custom-scrollbar w-full max-w-4xl mx-auto border-none bg-transparent">
               <div className="p-4 md:p-8 max-w-3xl mx-auto">
-                {currentSong && (
-                   <button 
-                      onClick={() => setIsInputPanelOpen(false)}
-                      className="mb-4 flex items-center gap-2 text-xs text-gray-400 hover:text-white"
-                   >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg>
-                      Back to Current Song
-                   </button>
-                )}
-                <InputForm 
-                  inputs={inputs} 
-                  setInputs={setInputs} 
-                  onSubmit={handleSubmit} 
-                  loadingStatus={loadingStatus}
-                />
-                {error && (
-                  <div className="mt-3 md:mt-4 p-3 md:p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-200 text-xs md:text-sm animate-pulse">
-                    {error}
-                  </div>
-                )}
+                  {currentSong && (
+                     <button 
+                        onClick={() => setIsInputPanelOpen(false)}
+                        className="mb-4 flex items-center gap-2 text-xs text-gray-400 hover:text-white"
+                     >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg>
+                        Back to Current Song
+                     </button>
+                  )}
+                  <InputForm 
+                    inputs={inputs} 
+                    setInputs={setInputs} 
+                    onSubmit={handleSubmit} 
+                    loadingStatus={loadingStatus}
+                  />
+                  {error && (
+                    <div className="mt-3 md:mt-4 p-3 md:p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-200 text-xs md:text-sm animate-pulse">
+                      {error}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
           )}
 
           {/* 3. Result Column (Main View) */}
@@ -297,6 +305,26 @@ export default function App() {
               </div>
             </div>
           )}
+          
+          {/* Empty State - No Songs Yet */}
+          {!currentSong && !isInputPanelOpen && (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center max-w-md">
+                <div className="text-6xl mb-6">🎵</div>
+                <h2 className="text-2xl font-bold text-white mb-3">Ready to create?</h2>
+                <p className="text-gray-400 mb-6">
+                  Start by generating your first song or select one from the history sidebar.
+                </p>
+                <button 
+                  onClick={() => setIsInputPanelOpen(true)}
+                  className="bg-suno-primary hover:bg-suno-primary/80 text-white px-6 py-3 rounded-lg font-semibold transition-all hover:scale-105 inline-flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+                  Create New Song
+                </button>
+              </div>
+            </div>
+          )}
         </main>
       </div>
       <MiniPlayer />
@@ -312,6 +340,21 @@ export default function App() {
         <Suspense fallback={<SkeletonLoader type="dashboard" />}>
           <LearningInsightsDashboard onClose={() => setShowLearningDashboard(false)} />
         </Suspense>
+      )}
+      
+      {/* Agent Debate Modal - Shows during analysis */}
+      {showDebateModal && debateSong && (
+        <AgentDebateModal
+          isOpen={showDebateModal}
+          onClose={() => setShowDebateModal(false)}
+          song={debateSong}
+          debates={debateSong.agentDebates || []}
+          consensusItems={debateSong.analysis?.consensusStrengths || []}
+          onComplete={() => {
+            setShowDebateModal(false);
+            // Analysis is already complete, just close modal
+          }}
+        />
       )}
     </div>
   );

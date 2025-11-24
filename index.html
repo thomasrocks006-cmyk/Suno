@@ -5,6 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="https://picsum.photos/32/32" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Suno v5 Architect</title>
+    
+    <!-- Performance: Preconnect to external domains -->
+    <link rel="preconnect" href="https://generativelanguage.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script>
@@ -50,6 +56,19 @@
         background-image: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #020617 50%);
         min-height: 100vh;
       }
+      
+      /* Mobile touch targets - ensure minimum 44x44px for accessibility */
+      @media (max-width: 768px) {
+        button, a, [role="button"] {
+          min-height: 44px;
+          min-width: 44px;
+        }
+        /* Tap highlight color for better mobile UX */
+        * {
+          -webkit-tap-highlight-color: rgba(34, 211, 238, 0.3); /* suno-primary with opacity */
+        }
+      }
+      
       /* Custom scrollbar for code editors */
       .custom-scrollbar::-webkit-scrollbar {
         width: 8px;
