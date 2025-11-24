@@ -5,7 +5,7 @@
  * Part of the 5-agent analysis system
  * 
  * OWNERSHIP: Narrative Arc, Imagery & Sensory Detail, Thematic Cohesion, Emotional Impact
- * MODEL: Gemini 2.0 Flash Experimental
+ * MODEL: Gemini 3 Pro Preview (upgraded for complex multi-category synthesis)
  * BUDGET: 8192 tokens (largest scope - 4 categories)
  */
 
@@ -163,7 +163,7 @@ Return JSON with all four analyses plus overall assessment.
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-3-pro-preview",
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
@@ -290,7 +290,7 @@ Return JSON with:
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-3-pro-preview",
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",

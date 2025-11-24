@@ -413,7 +413,7 @@ voteTally: "${voteTally}"
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-3-pro-preview",
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
