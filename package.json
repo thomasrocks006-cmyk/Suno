@@ -8,11 +8,17 @@
     "tunnel": "bash start-tunnel.sh",
     "start": "bash start-tunnel.sh",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "index": "bash scripts/index-repo.sh",
+    "verify-index": "bash scripts/verify-index.sh",
+    "search": "bash scripts/quick-search.sh",
+    "show-index": "bash scripts/show-index.sh"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
+    "@radix-ui/react-accordion": "^1.2.12",
     "http-proxy": "^1.18.1",
+    "idb": "^8.0.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

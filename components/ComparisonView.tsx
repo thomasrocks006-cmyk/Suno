@@ -20,7 +20,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, par
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 md:p-6 animate-fade-in">
-      <div className="w-full max-w-6xl h-[90vh] bg-gray-900 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-6xl h-[90vh] bg-gradient-to-br from-blue-900/50 to-purple-900/50 backdrop-blur-xl border border-blue-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="p-6 border-b border-white/10 bg-black/20 flex justify-between items-center shrink-0">
@@ -114,11 +114,8 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, par
                 <h3 className="text-gray-300 font-bold text-sm uppercase tracking-wider mb-4">Category Breakdown</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {FIXED_SCORING_CATEGORIES.map((cat) => {
-                        const currentScore = currentSong.analysis?.scoreBreakdown.find(s => s.category === cat)?.score || 0;
-                        // We assume V1 might not have the exact same structure if it was generated before this update, 
-                        // but going forward they will. For now, we just show current score vs an imagined V1 if missing.
-                        // Ideally, parentSong should have analysis too.
-                        const parentScoreObj = parentSong.analysis?.scoreBreakdown.find(s => s.category === cat);
+                        const currentScore = currentSong.analysis?.scoreBreakdown?.find(s => s.category === cat)?.score || 0;
+                        const parentScoreObj = parentSong.analysis?.scoreBreakdown?.find(s => s.category === cat);
                         const parentScore = parentScoreObj ? parentScoreObj.score : 0; 
                         const diff = currentScore - parentScore;
 
@@ -127,7 +124,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ currentSong, par
                                 <div>
                                     <div className="text-xs text-gray-400 font-bold uppercase mb-1">{cat}</div>
                                     <div className="text-[10px] text-gray-500 truncate max-w-[150px]">
-                                        {currentSong.analysis?.scoreBreakdown.find(s => s.category === cat)?.reason}
+                                        {currentSong.analysis?.scoreBreakdown?.find(s => s.category === cat)?.reason || 'N/A'}
                                     </div>
                                 </div>
                                 <div className="text-right">

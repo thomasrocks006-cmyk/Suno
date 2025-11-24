@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GeneratedSong } from '../types';
+import { GeneratedSong, SongInputs } from '../types';
 import { SongHistorySidebar } from './SongHistorySidebar';
 import { TipsSidebar } from './TipsSidebar';
 
@@ -10,6 +10,7 @@ interface SidebarProps {
   onClearHistory: () => void;
   isOpen: boolean;
   onToggle: () => void;
+  currentInputs?: SongInputs;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -18,7 +19,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentSongId,
   onClearHistory,
   isOpen,
-  onToggle
+  onToggle,
+  currentInputs
 }) => {
   const [activeTab, setActiveTab] = useState<'history' | 'tips'>('history');
 
@@ -75,7 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div className={`absolute inset-0 transition-opacity duration-300 ${activeTab === 'tips' ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
              <div className="h-full overflow-y-auto custom-scrollbar">
-                <TipsSidebar />
+                <TipsSidebar currentInputs={currentInputs} />
              </div>
           </div>
         </div>

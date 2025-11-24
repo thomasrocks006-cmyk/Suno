@@ -1,15 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAudio } from '../contexts/AudioContext';
-import { GeneratedSong, SongVariation, SongAnalysis, SunoModel } from '../types';
-import { analyzeGeneratedSong, generateSongVariations, rewriteSongWithImprovements } from '../services/geminiService';
+import { GeneratedSong, SongVariation, SongAnalysis, SunoModel, ChatMessage, RewritePlanProposal } from '../types';
+import { analyzeGeneratedSong, generateSongVariations, rewriteSongWithImprovements, generateRewritePlan, chatWithAnalysisAgent } from '../services/geminiService';
 import { generateSongFromArchitect, checkTaskStatus } from '../services/sunoService';
+import { fetchDNAMatchLyrics } from '../services/dnaLyricsFetchService';
+import { analyzeAgentCoverage, type AgentCoverageReport } from '../services/agentCoverageService';
+import { ComparisonView } from './ComparisonView';
+import { FloatingAnalysisAgent } from './FloatingAnalysisAgent';
+import { LiveRewritePlan } from './LiveRewritePlan';
 
 interface ResultDisplayProps {
   song: GeneratedSong;
   parentSong?: GeneratedSong; // Passed from App.tsx
   onUpdateSong: (updatedSong: GeneratedSong) => void;
-  onCreateVersion: (baseSong: GeneratedSong, newLyrics: string, technicalExplanation: string, advancedLogic: boolean, metaphorLogic: boolean) => void;
+  onCreateVersion: (baseSong: GeneratedSong, newLyrics: string, technicalExplanation: string, advancedLogic: boolean, metaphorLogic: boolean, commercialMode: boolean) => void;
 }
 
 type Tab = 'lyrics' | 'analysis' | 'variations' | 'audio';
@@ -106,15 +111,42 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
   // Rewrite Options
   const [useAdvancedLogic, setUseAdvancedLogic] = useState(song.hasAdvancedLogic);
   const [useMetaphorLogic, setUseMetaphorLogic] = useState(song.hasMetaphorLogic);
+  const [useCommercialMode, setUseCommercialMode] = useState(song.hasCommercialMode);
+  const [useAgentDebate, setUseAgentDebate] = useState(false); // Dual-agent debate system
 
   // Audio Generation Options
   const [selectedModel, setSelectedModel] = useState<SunoModel>(song.model || 'V4');
   const [isInstrumental, setIsInstrumental] = useState<boolean>(song.instrumental || false);
 
+  // Floating Agent State
+  const [isAgentVisible, setIsAgentVisible] = useState(false);
+  const [agentFocusedSection, setAgentFocusedSection] = useState<'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'lineByLine' | 'general'>('general');
+  const [highlightedText, setHighlightedText] = useState('');
+
+  // Rewrite Plan State
+  const [proposedPlan, setProposedPlan] = useState<RewritePlanProposal | null>(song.proposedPlan || null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [expandedScoreItem, setExpandedScoreItem] = useState<number | null>(null);
+  
+  // DNA Lyrics Fetching State
+  const [isFetchingDNALyrics, setIsFetchingDNALyrics] = useState(false);
+  const [dnaLyricsError, setDNALyricsError] = useState<string | null>(null);
+  
+  // Agent Coverage Report State
+  const [coverageReport, setCoverageReport] = useState<AgentCoverageReport | null>(null);
+
   useEffect(() => {
     setSelectedModel(song.model || 'V4');
     setIsInstrumental(song.instrumental || false);
   }, [song.id, song.model, song.instrumental]);
+  
+  // Calculate coverage when plan is available
+  useEffect(() => {
+    if (proposedPlan) {
+      const report = analyzeAgentCoverage(proposedPlan);
+      setCoverageReport(report);
+    }
+  }, [proposedPlan]);
 
   useEffect(() => {
       // Update toggles if advice comes in
@@ -122,7 +154,21 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
           setUseAdvancedLogic(song.analysis.rewriteAdvice.shouldUseAdvancedLogic);
           setUseMetaphorLogic(song.analysis.rewriteAdvice.shouldUseMetaphorLogic);
       }
+      
+      // AUTO-GENERATE PLAN: When analysis completes, immediately generate execution plan
+      if (song.analysis && !song.proposedPlan && !proposedPlan && !isGeneratingPlan) {
+          console.log('[ResultDisplay] Analysis complete - auto-generating execution plan...');
+          handleGeneratePlan();
+      }
   }, [song.analysis]);
+
+  // Auto-analyze V2+ songs (songs with parentId) to generate comparison review
+  useEffect(() => {
+    if (song.parentId && parentSong && !song.analysis) {
+      console.log('[ResultDisplay] Auto-analyzing V2+ song for comparison...');
+      handleAnalyze();
+    }
+  }, [song.id, song.parentId]);
 
   const handleAnalyze = async () => {
     if (song.analysis) return;
@@ -150,15 +196,63 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
   const handleRewrite = async () => {
     setIsRewriting(true);
     try {
-      const updatedData = await rewriteSongWithImprovements(song, useAdvancedLogic, useMetaphorLogic);
-      onCreateVersion(song, updatedData.lyrics, updatedData.technicalExplanation, useAdvancedLogic, useMetaphorLogic);
+      const updatedData = await rewriteSongWithImprovements(song, useAdvancedLogic, useMetaphorLogic, useCommercialMode);
+      onCreateVersion(song, updatedData.lyrics, updatedData.technicalExplanation, useAdvancedLogic, useMetaphorLogic, useCommercialMode);
       setActiveTab('lyrics'); 
     } catch (e) {
       console.error(e);
     } finally {
       setIsRewriting(false);
     }
-  }
+  };
+
+  const handleGeneratePlan = async () => {
+    setIsGeneratingPlan(true);
+    try {
+      const chatInsights = chatMessages
+        .filter(msg => msg.role === 'agent' && msg.content.includes('key point') || msg.content.includes('flag this'))
+        .map(msg => msg.content);
+      
+      const plan = await generateRewritePlan(song, useAdvancedLogic, useMetaphorLogic, useCommercialMode, chatInsights);
+      setProposedPlan(plan);
+      onUpdateSong({ ...song, proposedPlan: plan });
+    } catch (e) {
+      console.error('Plan generation failed:', e);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  };
+  
+  const handleFetchDNALyrics = async () => {
+    if (!song.analysis?.dnaMatch) return;
+    setIsFetchingDNALyrics(true);
+    setDNALyricsError(null);
+    try {
+      const updatedMatch = await fetchDNAMatchLyrics(song.analysis.dnaMatch);
+      const updatedAnalysis = { ...song.analysis, dnaMatch: updatedMatch };
+      onUpdateSong({ ...song, analysis: updatedAnalysis });
+    } catch (e: any) {
+      console.error('DNA lyrics fetch failed:', e);
+      setDNALyricsError(e.message || 'Failed to fetch lyrics');
+    } finally {
+      setIsFetchingDNALyrics(false);
+    }
+  };
+
+  const handleApprovePlan = async () => {
+    if (!proposedPlan) return;
+    setIsRewriting(true);
+    try {
+      // Execute the approved plan by creating a V2
+      const updatedData = await rewriteSongWithImprovements(song, useAdvancedLogic, useMetaphorLogic, useCommercialMode);
+      onCreateVersion(song, updatedData.lyrics, updatedData.technicalExplanation, useAdvancedLogic, useMetaphorLogic, useCommercialMode);
+      setActiveTab('lyrics');
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRewriting(false);
+    }
+  };
 
   const handleGenerateAudio = async () => {
     if (song.sunoTaskId) return; // Already generated or generating
@@ -288,13 +382,29 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
   return (
     <div className="h-full flex flex-col relative">
       {isRewriting && <CreativeForgeLoader />}
-      {isComparisonOpen && parentSong && (
+      {isComparisonOpen && parentSong ? (
           <ComparisonView 
             currentSong={song} 
             parentSong={parentSong} 
-            onClose={() => setIsComparisonOpen(false)} 
+            onClose={() => {
+              console.log('[ResultDisplay] Closing comparison view');
+              setIsComparisonOpen(false);
+            }} 
           />
-      )}
+      ) : isComparisonOpen ? (
+          <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center">
+            <div className="bg-red-500/20 border border-red-500 p-6 rounded-xl text-white">
+              <h3 className="font-bold mb-2">Error: No Parent Song</h3>
+              <p className="text-sm mb-4">Cannot show comparison without a parent song.</p>
+              <button 
+                onClick={() => setIsComparisonOpen(false)}
+                className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+      ) : null}
       
       {/* Top Card: Metadata & Cover */}
       <div className="bg-suno-surface/50 p-4 md:p-6 rounded-2xl border border-white/5 shadow-xl mb-4 shrink-0 backdrop-blur-sm">
@@ -334,6 +444,12 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                     <span title="Written with Central Metaphor Logic" className="flex items-center gap-1 text-[10px] font-bold bg-suno-accent/10 text-suno-accent border border-suno-accent/20 px-2 py-0.5 rounded-full whitespace-nowrap">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         Metaphor
+                    </span>
+                )}
+                {song.hasCommercialMode && (
+                    <span title="Written with Commercial Mode (Less is More)" className="flex items-center gap-1 text-[10px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/></svg>
+                        Commercial
                     </span>
                 )}
                 {song.actualModel && (
@@ -630,7 +746,18 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                  <CopyButton text={song.lyrics} />
             </div>
 
-             <div className="font-mono text-xs md:text-sm lg:text-base text-gray-200 whitespace-pre-wrap leading-relaxed pb-12 md:pb-20">
+             <div 
+                className="font-mono text-xs md:text-sm lg:text-base text-gray-200 whitespace-pre-wrap leading-relaxed pb-12 md:pb-20"
+                onMouseUp={(e) => {
+                    const selection = window.getSelection();
+                    const selectedText = selection?.toString().trim();
+                    if (selectedText && selectedText.length > 5) {
+                        setHighlightedText(selectedText);
+                        setIsAgentVisible(true);
+                        setAgentFocusedSection('lyrics');
+                    }
+                }}
+             >
                {song.lyrics.split('\n').map((line, i) => {
                  const isHeader = line.trim().startsWith('[') && line.trim().endsWith(']');
                  const isMeta = line.trim().startsWith('(') && line.trim().endsWith(')');
@@ -673,6 +800,106 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
               <ProgressBar isRunning={true} label="Analyzing Structure..." />
             ) : (
               <div className="space-y-3 md:space-y-6 animate-fade-in pb-12 md:pb-20">
+                
+                {/* 5-Agent System Info Banner */}
+                <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 rounded-lg p-3 md:p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">🎭</span>
+                    <div className="flex-grow">
+                      <h4 className="text-sm font-bold text-white mb-1">5-Agent Specialized Analysis</h4>
+                      <p className="text-xs text-gray-300 leading-relaxed">
+                        Your song was analyzed by 5 specialized AI agents in parallel, each bringing unique expertise. 
+                        Scores are evidence-based and grounded in music industry research.
+                      </p>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-[10px]">
+                        <div className="bg-purple-500/10 border border-purple-500/20 rounded p-2">
+                          <span className="font-bold text-purple-400">✍️ Lyricist:</span>
+                          <span className="text-gray-300 ml-1">Word craft, clichés, originality</span>
+                        </div>
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded p-2">
+                          <span className="font-bold text-blue-400">📖 Storyteller:</span>
+                          <span className="text-gray-300 ml-1">Narrative, imagery, emotion, themes</span>
+                        </div>
+                        <div className="bg-pink-500/10 border border-pink-500/20 rounded p-2">
+                          <span className="font-bold text-pink-400">🎤 Vocal Coach:</span>
+                          <span className="text-gray-300 ml-1">Singability, breath, phonetics</span>
+                        </div>
+                        <div className="bg-green-500/10 border border-green-500/20 rounded p-2">
+                          <span className="font-bold text-green-400">🎚️ Producer:</span>
+                          <span className="text-gray-300 ml-1">Structure, pacing, sonic texture</span>
+                        </div>
+                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded p-2">
+                          <span className="font-bold text-yellow-400">⭐ Hitmaker:</span>
+                          <span className="text-gray-300 ml-1">Hook factor, commercial appeal</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Agent Coverage Report */}
+                {coverageReport && (
+                  <div className="bg-gradient-to-r from-cyan-900/30 to-teal-900/30 border border-cyan-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <span className="text-2xl">📊</span>
+                      <div className="flex-grow">
+                        <h4 className="text-sm font-bold text-cyan-300 mb-1">Agent Coverage Analysis</h4>
+                        <p className="text-xs text-gray-300">Quality assurance for rewrite plan</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-cyan-400">{coverageReport.coveragePercentage}%</div>
+                        <div className="text-xs text-gray-400">Reviewed</div>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="bg-black/30 rounded p-3 border border-cyan-500/20">
+                        <div className="text-xs font-bold text-cyan-400 mb-2">Agent Participation</div>
+                        <div className="space-y-1 text-xs">
+                          {Object.entries(coverageReport.agentParticipation).map(([agent, lines]) => (
+                            <div key={agent} className="flex justify-between">
+                              <span className="text-gray-300">{agent}:</span>
+                              <span className="text-white font-medium">{lines}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-black/30 rounded p-3 border border-cyan-500/20">
+                        <div className="text-xs font-bold text-cyan-400 mb-2">
+                          Uncovered {coverageReport.uncoveredLines.length > 0 && `(${coverageReport.uncoveredLines.length})`}
+                        </div>
+                        {coverageReport.uncoveredLines.length === 0 ? (
+                          <div className="text-xs text-green-400">✓ All reviewed</div>
+                        ) : (
+                          <div className="space-y-1 text-xs max-h-24 overflow-y-auto">
+                            {coverageReport.uncoveredLines.slice(0, 3).map((item, i) => (
+                              <div key={i} className="text-gray-300 text-[10px]">
+                                L{item.lineNumber}: {item.reason}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-black/30 rounded p-3 border border-cyan-500/20">
+                        <div className="text-xs font-bold text-cyan-400 mb-2">
+                          Debates {coverageReport.debateHotspots.length > 0 && `(${coverageReport.debateHotspots.length})`}
+                        </div>
+                        {coverageReport.debateHotspots.length === 0 ? (
+                          <div className="text-xs text-gray-400">No disagreements</div>
+                        ) : (
+                          <div className="space-y-1 text-xs max-h-24 overflow-y-auto">
+                            {coverageReport.debateHotspots.slice(0, 3).map((item, i) => (
+                              <div key={i} className="text-gray-300 text-[10px]">
+                                L{item.lineNumber}: {item.agentCount} agents
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Score Section */}
                 <div className="flex items-center gap-3 md:gap-6 bg-black/30 p-3 md:p-4 rounded-xl border border-white/5">
                   <div className={`shrink-0 w-16 h-16 md:w-24 md:h-24 rounded-full flex items-center justify-center border-2 md:border-4 ${getScoreColor(song.analysis.overallScore)} shadow-[0_0_20px_rgba(0,0,0,0.5)]`}>
@@ -703,7 +930,12 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                             </p>
                         </div>
                         <button 
-                            onClick={() => setIsComparisonOpen(true)}
+                            onClick={() => {
+                              console.log('[ResultDisplay] Button clicked. Opening comparison...');
+                              console.log('[ResultDisplay] Parent song exists?', !!parentSong);
+                              console.log('[ResultDisplay] Comparison review:', song.analysis?.comparisonReview);
+                              setIsComparisonOpen(true);
+                            }}
                             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg transition-transform hover:scale-105"
                         >
                             View Full Comparison
@@ -711,19 +943,118 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                     </div>
                 )}
 
-                {/* Detailed Score Breakdown */}
+                {/* Detailed Score Breakdown - IMPROVED WITH EXPANDABLE CARDS */}
                 <div className="bg-white/5 p-4 rounded-lg">
-                    <h5 className="text-[10px] md:text-xs uppercase font-bold text-gray-400 mb-2 md:mb-3">Score Breakdown</h5>
+                    <h5 className="text-[10px] md:text-xs uppercase font-bold text-gray-400 mb-2 md:mb-3 flex items-center justify-between">
+                        <span>Score Breakdown - 5 Agent Analysis</span>
+                        <button 
+                            onClick={() => {
+                                setAgentFocusedSection('score');
+                                setIsAgentVisible(true);
+                            }}
+                            className="text-[10px] bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 px-2 py-1 rounded transition"
+                        >
+                            🤖 Discuss with Agent
+                        </button>
+                    </h5>
+                    
+                    {/* Agent Legend */}
+                    <div className="mb-3 p-2 bg-black/20 rounded border border-white/5">
+                        <div className="flex flex-wrap gap-2 text-[9px]">
+                            <span className="text-gray-500">Scored by:</span>
+                            <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">✍️ Lyricist</span>
+                            <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">📖 Storyteller</span>
+                            <span className="px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400">🎤 Vocal Coach</span>
+                            <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-400">🎚️ Producer</span>
+                            <span className="px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400">⭐ Hitmaker</span>
+                        </div>
+                    </div>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-                        {song.analysis.scoreBreakdown.map((item, i) => (
-                            <div key={i} className="flex justify-between items-center bg-black/20 p-1.5 md:p-2 rounded border border-white/5 gap-2">
-                                <div className="min-w-0 flex-grow">
-                                    <span className="text-xs font-bold text-gray-300 block truncate">{item.category}</span>
-                                    <span className="text-[9px] md:text-[10px] text-gray-500 truncate block">{item.reason}</span>
+                        {song.analysis.scoreBreakdown.map((item, i) => {
+                            // Agent badge configuration
+                            const agentConfig = {
+                                'Lyricist': { emoji: '✍️', color: 'text-purple-400', bg: 'bg-purple-500/10' },
+                                'Storyteller': { emoji: '📖', color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                                'Vocal Coach': { emoji: '🎤', color: 'text-pink-400', bg: 'bg-pink-500/10' },
+                                'Producer': { emoji: '🎚️', color: 'text-green-400', bg: 'bg-green-500/10' },
+                                'Hitmaker': { emoji: '⭐', color: 'text-yellow-400', bg: 'bg-yellow-500/10' }
+                            };
+                            const agent = item.agent || 'Unknown';
+                            const agentStyle = agentConfig[agent as keyof typeof agentConfig] || { emoji: '🤖', color: 'text-gray-400', bg: 'bg-gray-500/10' };
+                            
+                            // Get programmatic score if available
+                            const getProgrammaticScore = () => {
+                                if (!song.analysis.programmaticScores) return null;
+                                const categoryMap: Record<string, keyof NonNullable<typeof song.analysis.programmaticScores>> = {
+                                    'Hook Factor': 'hookFactor',
+                                    'Vocal Playability': 'vocalPlayability',
+                                    'Imagery & Sensory Detail': 'imagerySensory',
+                                    'Narrative Arc': 'narrativeArc'
+                                };
+                                const key = categoryMap[item.category];
+                                return key ? song.analysis.programmaticScores[key] : null;
+                            };
+                            const programmaticScore = getProgrammaticScore();
+                            
+                            return (
+                            <div 
+                                key={i} 
+                                className="bg-black/20 p-2 md:p-3 rounded border border-white/5 cursor-pointer hover:border-indigo-500/50 transition"
+                                onClick={() => {
+                                    setExpandedScoreItem(expandedScoreItem === i ? null : i);
+                                    setAgentFocusedSection('score');
+                                    setIsAgentVisible(true);
+                                }}
+                            >
+                                <div className="flex justify-between items-start gap-2">
+                                    <div className="min-w-0 flex-grow">
+                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                            <span className="text-xs font-bold text-gray-300">{item.category}</span>
+                                            {item.agent && (
+                                                <span 
+                                                    className={`text-[9px] px-1.5 py-0.5 rounded ${agentStyle.bg} ${agentStyle.color} font-medium flex items-center gap-1`}
+                                                    title={`Scored by ${item.agent}`}
+                                                >
+                                                    <span>{agentStyle.emoji}</span>
+                                                    <span className="hidden sm:inline">{item.agent}</span>
+                                                </span>
+                                            )}
+                                            <svg 
+                                                className={`w-3 h-3 text-gray-400 transition-transform ${expandedScoreItem === i ? 'rotate-180' : ''}`} 
+                                                fill="none" 
+                                                stroke="currentColor" 
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/>
+                                            </svg>
+                                        </div>
+                                        {expandedScoreItem === i ? (
+                                            <p className="text-[10px] md:text-xs text-gray-400 leading-relaxed mt-2">{item.reason}</p>
+                                        ) : (
+                                            <p className="text-[9px] md:text-[10px] text-gray-500 line-clamp-1">{item.reason}</p>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span 
+                                            className={`text-xs md:text-sm font-bold shrink-0 ${getScoreColor(item.score * 10).split(' ')[0]}`}
+                                            title={programmaticScore ? `AI Score: ${item.score}/10\nCalculated: ${programmaticScore.score}/10` : undefined}
+                                        >
+                                            {item.score}/10
+                                        </span>
+                                        {programmaticScore && (
+                                            <span 
+                                                className="text-[8px] text-gray-500 cursor-help"
+                                                title={`Programmatic Score: ${programmaticScore.score}/10\n${programmaticScore.breakdown}`}
+                                            >
+                                                📊 {programmaticScore.score}/10
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                                <span className={`text-xs md:text-sm font-bold shrink-0 ${getScoreColor(item.score * 10).split(' ')[0]}`}>{item.score}/10</span>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -745,9 +1076,17 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
 
                 {/* Sonic Analysis */}
                 <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-white/10 rounded-lg overflow-hidden">
-                    <div className="bg-white/5 px-3 md:px-4 py-1.5 md:py-2 border-b border-white/10 flex items-center gap-2">
-                        <span className="text-base md:text-lg">🎧</span>
-                        <h5 className="text-xs md:text-sm font-bold text-white">Sonic & Structural Analysis (Producer's Ear)</h5>
+                    <div className="bg-white/5 px-3 md:px-4 py-1.5 md:py-2 border-b border-white/10 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-base md:text-lg">🎧</span>
+                            <h5 className="text-xs md:text-sm font-bold text-white">Sonic & Structural Analysis (Producer's Ear)</h5>
+                        </div>
+                        <button 
+                            onClick={() => { setIsAgentVisible(true); setAgentFocusedSection('sonic'); }}
+                            className="text-[10px] bg-purple-500/20 hover:bg-purple-500/40 text-purple-300 px-2 py-1 rounded transition"
+                        >
+                            Discuss with Agent
+                        </button>
                     </div>
                     <div className="p-3 md:p-4 space-y-3 md:space-y-4">
                         <div className="flex gap-2 md:gap-4 items-start">
@@ -781,12 +1120,20 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                 <div className="bg-blue-900/20 border border-blue-500/30 p-3 md:p-4 rounded-lg">
                   <div className="flex justify-between items-center mb-2 gap-2">
                       <h5 className="text-[10px] md:text-xs uppercase font-bold text-blue-400">Line-by-Line Improvements</h5>
-                      <button 
-                         onClick={() => { setActiveTab('lyrics'); setIsSmartEditorOpen(true); }}
-                         className="text-[10px] bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 px-2 py-1 rounded transition"
-                      >
-                          Open Smart Editor
-                      </button>
+                      <div className="flex gap-2">
+                          <button 
+                              onClick={() => { setIsAgentVisible(true); setAgentFocusedSection('lineByLine'); }}
+                              className="text-[10px] bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 px-2 py-1 rounded transition"
+                          >
+                              Discuss with Agent
+                          </button>
+                          <button 
+                             onClick={() => { setActiveTab('lyrics'); setIsSmartEditorOpen(true); }}
+                             className="text-[10px] bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 px-2 py-1 rounded transition"
+                          >
+                              Open Smart Editor
+                          </button>
+                      </div>
                   </div>
                   <div className="space-y-2 md:space-y-3">
                     {song.analysis.lineByLineImprovements.map((item, i) => (
@@ -805,11 +1152,428 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                   </div>
                 </div>
 
+                {/* DNA MATCH - Real World Hit Comparison */}
+                {song.analysis.dnaMatch && (
+                    <div className="bg-gradient-to-br from-amber-900/30 to-orange-900/30 border border-amber-500/40 rounded-xl overflow-hidden">
+                        <div className="bg-gradient-to-r from-amber-600/30 to-orange-600/30 px-4 py-3 border-b border-amber-500/30 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <span className="text-2xl">🧬</span>
+                                <div>
+                                    <h3 className="text-sm md:text-base font-bold text-amber-200">Song DNA Match</h3>
+                                    <p className="text-xs text-amber-300/70">Closest Real-World Hit Comparison</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => { setIsAgentVisible(true); setAgentFocusedSection('dnaMatch'); }}
+                                className="text-[10px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-2 py-1 rounded transition whitespace-nowrap"
+                            >
+                                Discuss with Agent
+                            </button>
+                        </div>
+                        
+                        <div className="p-4 md:p-6 space-y-4">
+                            {/* Reference Song Card */}
+                            <div className="bg-black/40 rounded-lg p-4 border border-amber-500/20">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <div className="text-lg font-bold text-white mb-1">"{song.analysis.dnaMatch.referenceSong}"</div>
+                                        <div className="text-sm text-amber-300">{song.analysis.dnaMatch.artist}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-2xl font-bold text-amber-400">{song.analysis.dnaMatch.matchScore}%</div>
+                                        <div className="text-xs text-gray-400">Match Score</div>
+                                    </div>
+                                </div>
+                                
+                                {/* Credibility Factors */}
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {song.analysis.dnaMatch.credibilityFactors.map((factor, i) => (
+                                        <span key={i} className="text-xs bg-amber-500/20 text-amber-200 px-2 py-1 rounded border border-amber-500/30">
+                                            ⭐ {factor}
+                                        </span>
+                                    ))}
+                                </div>
+                                
+                                <div className="text-sm text-gray-300 bg-black/30 p-3 rounded border border-white/5">
+                                    <div className="font-bold text-amber-300 mb-2">Why This Is A-Tier:</div>
+                                    <p className="text-xs leading-relaxed">{song.analysis.dnaMatch.whatTheyDidBetter}</p>
+                                </div>
+                                
+                                {/* Fetch Reference Lyrics Button */}
+                                {!song.analysis.dnaMatch.referenceLyrics && (
+                                    <button
+                                        onClick={handleFetchDNALyrics}
+                                        disabled={isFetchingDNALyrics}
+                                        className="w-full mt-3 bg-amber-500/20 hover:bg-amber-500/30 disabled:bg-amber-500/10 text-amber-300 px-4 py-2 rounded border border-amber-500/30 transition text-sm font-medium disabled:cursor-not-allowed"
+                                    >
+                                        {isFetchingDNALyrics ? (
+                                            <span className="flex items-center justify-center gap-2">
+                                                <span className="animate-spin">⏳</span> Fetching Reference Lyrics...
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center justify-center gap-2">
+                                                📜 Fetch Reference Lyrics for Structural Comparison
+                                            </span>
+                                        )}
+                                    </button>
+                                )}
+                                
+                                {dnaLyricsError && (
+                                    <div className="mt-3 bg-red-500/20 border border-red-500/40 rounded p-3 text-sm text-red-300">
+                                        ⚠️ {dnaLyricsError}
+                                    </div>
+                                )}
+                                
+                                {/* Display Fetched Lyrics */}
+                                {song.analysis.dnaMatch.referenceLyrics && (
+                                    <div className="mt-3 bg-amber-900/20 border border-amber-500/30 rounded p-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="font-bold text-amber-300 text-sm">Reference Lyrics</div>
+                                            <CopyButton text={song.analysis.dnaMatch.referenceLyrics} />
+                                        </div>
+                                        <div className="text-xs text-gray-300 whitespace-pre-line max-h-64 overflow-y-auto bg-black/30 p-3 rounded border border-white/5">
+                                            {song.analysis.dnaMatch.referenceLyrics}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Match Reasons Grid */}
+                            <div>
+                                <h4 className="text-xs font-bold text-amber-300 uppercase mb-2">Why They Match</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="bg-black/40 p-3 rounded border border-white/5">
+                                        <div className="text-xs font-bold text-amber-400 mb-1">🎵 Vibe/Energy</div>
+                                        <p className="text-xs text-gray-300">{song.analysis.dnaMatch.matchReasons.vibe}</p>
+                                    </div>
+                                    <div className="bg-black/40 p-3 rounded border border-white/5">
+                                        <div className="text-xs font-bold text-amber-400 mb-1">🏗️ Structure</div>
+                                        <p className="text-xs text-gray-300">{song.analysis.dnaMatch.matchReasons.structure}</p>
+                                    </div>
+                                    <div className="bg-black/40 p-3 rounded border border-white/5">
+                                        <div className="text-xs font-bold text-amber-400 mb-1">✍️ Lyrical Style</div>
+                                        <p className="text-xs text-gray-300">{song.analysis.dnaMatch.matchReasons.lyricalStyle}</p>
+                                    </div>
+                                    <div className="bg-black/40 p-3 rounded border border-white/5">
+                                        <div className="text-xs font-bold text-amber-400 mb-1">💫 Emotional Arc</div>
+                                        <p className="text-xs text-gray-300">{song.analysis.dnaMatch.matchReasons.emotional}</p>
+                                    </div>
+                                    <div className="bg-black/40 p-3 rounded border border-white/5 md:col-span-2">
+                                        <div className="text-xs font-bold text-amber-400 mb-1">⏱️ Pacing</div>
+                                        <p className="text-xs text-gray-300">{song.analysis.dnaMatch.matchReasons.pacing}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Improvements Section */}
+                            <div>
+                                <h4 className="text-xs font-bold text-amber-300 uppercase mb-2">What You Can Learn From This Hit</h4>
+                                <div className="space-y-3">
+                                    {/* Structural */}
+                                    {song.analysis.dnaMatch.improvements.structural.length > 0 && (
+                                        <div className="bg-black/40 p-3 rounded border border-white/5">
+                                            <div className="text-xs font-bold text-green-400 mb-2 flex items-center gap-2">
+                                                <span>📐</span> Structural Improvements
+                                            </div>
+                                            <ul className="space-y-1">
+                                                {song.analysis.dnaMatch.improvements.structural.map((imp, i) => (
+                                                    <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
+                                                        <span className="text-green-400 shrink-0">•</span>
+                                                        <span>{imp}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Word Spacing */}
+                                    {song.analysis.dnaMatch.improvements.wordSpacing.length > 0 && (
+                                        <div className="bg-black/40 p-3 rounded border border-white/5">
+                                            <div className="text-xs font-bold text-blue-400 mb-2 flex items-center gap-2">
+                                                <span>🎤</span> Word Spacing & Phrasing
+                                            </div>
+                                            <ul className="space-y-1">
+                                                {song.analysis.dnaMatch.improvements.wordSpacing.map((imp, i) => (
+                                                    <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
+                                                        <span className="text-blue-400 shrink-0">•</span>
+                                                        <span>{imp}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Metaphorical */}
+                                    {song.analysis.dnaMatch.improvements.metaphorical.length > 0 && (
+                                        <div className="bg-black/40 p-3 rounded border border-white/5">
+                                            <div className="text-xs font-bold text-purple-400 mb-2 flex items-center gap-2">
+                                                <span>🎭</span> Metaphorical Depth
+                                            </div>
+                                            <ul className="space-y-1">
+                                                {song.analysis.dnaMatch.improvements.metaphorical.map((imp, i) => (
+                                                    <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
+                                                        <span className="text-purple-400 shrink-0">•</span>
+                                                        <span>{imp}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Narrative */}
+                                    {song.analysis.dnaMatch.improvements.narrative.length > 0 && (
+                                        <div className="bg-black/40 p-3 rounded border border-white/5">
+                                            <div className="text-xs font-bold text-yellow-400 mb-2 flex items-center gap-2">
+                                                <span>📖</span> Narrative & Storytelling
+                                            </div>
+                                            <ul className="space-y-1">
+                                                {song.analysis.dnaMatch.improvements.narrative.map((imp, i) => (
+                                                    <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
+                                                        <span className="text-yellow-400 shrink-0">•</span>
+                                                        <span>{imp}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Sonic */}
+                                    {song.analysis.dnaMatch.improvements.sonic.length > 0 && (
+                                        <div className="bg-black/40 p-3 rounded border border-white/5">
+                                            <div className="text-xs font-bold text-pink-400 mb-2 flex items-center gap-2">
+                                                <span>🎧</span> Sonic & Phonetic
+                                            </div>
+                                            <ul className="space-y-1">
+                                                {song.analysis.dnaMatch.improvements.sonic.map((imp, i) => (
+                                                    <li key={i} className="text-xs text-gray-300 flex items-start gap-2">
+                                                        <span className="text-pink-400 shrink-0">•</span>
+                                                        <span>{imp}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* LIVE REWRITE PLAN - Always visible, auto-updates */}
+                <LiveRewritePlan
+                  plan={proposedPlan}
+                  song={song}
+                  parentSong={parentSong}
+                  isGenerating={isGeneratingPlan}
+                  onApprove={handleApprovePlan}
+                  onReject={() => setProposedPlan(null)}
+                  onSectionClick={(section) => {
+                    setAgentFocusedSection(section as any);
+                    setIsAgentVisible(true);
+                  }}
+                />
+
                 {/* Enhanced Rewrite Studio */}
                 <div className="pt-4 md:pt-6 border-t border-white/10">
+                    {/* Show Execution Plan if it exists (from last rewrite) */}
+                    {song.executionPlan && (
+                        <div className="mb-6 bg-gradient-to-br from-emerald-900/30 to-teal-900/30 border border-emerald-500/30 rounded-xl p-4 md:p-6">
+                            <div className="flex items-center gap-2 mb-4">
+                                <span className="text-2xl">📋</span>
+                                <h3 className="text-sm md:text-base font-bold text-emerald-300">Executed Rewrite Plan {song.parentId ? '(V2)' : ''}</h3>
+                                {song.parentId && (
+                                    <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">Rewritten Song</span>
+                                )}
+                            </div>
+                            
+                            {/* Target Score vs Actual Achievement */}
+                            <div className="bg-black/30 rounded-lg p-3 mb-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-gray-400">Target Score:</span>
+                                    <span className="text-xl font-bold text-emerald-400">{song.executionPlan.targetScore}/100</span>
+                                </div>
+                                {song.analysis && (
+                                    <div className="space-y-1">
+                                        <div className="text-xs text-gray-500">
+                                            Actual Score Achieved: <span className="font-bold text-white">{song.analysis.overallScore}/100</span>
+                                        </div>
+                                        <div className="text-xs">
+                                            <span className="text-gray-500">Impact: </span>
+                                            <span className={`font-bold ${
+                                                song.analysis.overallScore >= song.executionPlan.targetScore 
+                                                    ? 'text-green-400' 
+                                                    : song.analysis.overallScore > (parentSong?.analysis?.overallScore || 0)
+                                                    ? 'text-yellow-400'
+                                                    : 'text-red-400'
+                                            }`}>
+                                                {song.analysis.overallScore >= song.executionPlan.targetScore 
+                                                    ? '✓ Target Met!' 
+                                                    : song.analysis.overallScore > (parentSong?.analysis?.overallScore || 0)
+                                                    ? '⚠ Improved but below target'
+                                                    : '✗ Score decreased'}
+                                            </span>
+                                        </div>
+                                        {parentSong?.analysis && (
+                                            <div className="text-xs text-gray-500 pt-2 border-t border-white/5 mt-2">
+                                                V1 Score: {parentSong.analysis.overallScore} → V2 Score: {song.analysis.overallScore}
+                                                <span className={`ml-2 font-bold ${song.analysis.overallScore > parentSong.analysis.overallScore ? 'text-green-400' : 'text-red-400'}`}>
+                                                    ({song.analysis.overallScore > parentSong.analysis.overallScore ? '+' : ''}{song.analysis.overallScore - parentSong.analysis.overallScore})
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Category Improvements with DNA Insights */}
+                            <div className="mb-4">
+                                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Category Improvements</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {song.executionPlan.scoreImprovementsByCategory.map((cat, i) => {
+                                        const actualScore = song.analysis?.scoreBreakdown.find(s => s.category === cat.category)?.score;
+                                        const targetMet = actualScore && actualScore >= cat.targetScore;
+                                        return (
+                                            <div key={i} className="bg-black/40 p-2 rounded border border-white/5">
+                                                <div className="text-xs font-bold text-white mb-1 flex items-center justify-between">
+                                                    <span>{cat.category}</span>
+                                                    {actualScore && (
+                                                        <span className={`text-[10px] ${targetMet ? 'text-green-400' : 'text-yellow-400'}`}>
+                                                            {targetMet ? '✓' : '⚠'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs text-gray-400">{cat.currentScore}/10</span>
+                                                    <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                                                    <span className="text-xs font-bold text-green-400">{cat.targetScore}/10</span>
+                                                    {actualScore && (
+                                                        <>
+                                                            <span className="text-xs text-gray-500">→</span>
+                                                            <span className={`text-xs font-bold ${targetMet ? 'text-green-400' : 'text-yellow-400'}`}>
+                                                                {actualScore}/10
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <div className="text-[10px] text-gray-500 italic mb-1">{cat.strategy}</div>
+                                                {cat.dnaInsightApplied && (
+                                                    <div className="text-[9px] text-amber-400 bg-amber-900/20 px-2 py-1 rounded mt-1">
+                                                        🧬 {cat.dnaInsightApplied}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* DNA Match Insights Actually Applied */}
+                            {song.executionPlan.dnaMatchInsights && (
+                                <div className="mb-4 bg-amber-900/20 border border-amber-500/30 p-3 rounded">
+                                    <h4 className="text-xs font-bold text-amber-300 uppercase mb-2">🧬 A-Tier Techniques Applied</h4>
+                                    <div className="space-y-2 text-[10px] text-gray-300">
+                                        {song.executionPlan.dnaMatchInsights.structural.length > 0 && (
+                                            <div>
+                                                <div className="font-bold text-amber-400">📐 Structural ({song.executionPlan.dnaMatchInsights.structural.length})</div>
+                                                <ul className="ml-3 space-y-1 mt-1">
+                                                    {song.executionPlan.dnaMatchInsights.structural.map((item, i) => (
+                                                        <li key={i}>• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {song.executionPlan.dnaMatchInsights.wordSpacing.length > 0 && (
+                                            <div>
+                                                <div className="font-bold text-amber-400">🎤 Word Spacing ({song.executionPlan.dnaMatchInsights.wordSpacing.length})</div>
+                                                <ul className="ml-3 space-y-1 mt-1">
+                                                    {song.executionPlan.dnaMatchInsights.wordSpacing.map((item, i) => (
+                                                        <li key={i}>• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {song.executionPlan.dnaMatchInsights.sonic.length > 0 && (
+                                            <div>
+                                                <div className="font-bold text-amber-400">🎧 Sonic ({song.executionPlan.dnaMatchInsights.sonic.length})</div>
+                                                <ul className="ml-3 space-y-1 mt-1">
+                                                    {song.executionPlan.dnaMatchInsights.sonic.map((item, i) => (
+                                                        <li key={i}>• {item}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Line Changes with Source Analysis */}
+                            {song.executionPlan.lineLevelChanges && song.executionPlan.lineLevelChanges.length > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Line Changes Executed ({song.executionPlan.lineLevelChanges.length})</h4>
+                                    <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                                        {song.executionPlan.lineLevelChanges.map((change, i) => {
+                                            const sourceColors: Record<string, string> = {
+                                                'LineByLine': 'bg-blue-500/20 text-blue-300',
+                                                'Phonetic': 'bg-purple-500/20 text-purple-300',
+                                                'DNAMatch': 'bg-amber-500/20 text-amber-300',
+                                                'ChatAgent': 'bg-indigo-500/20 text-indigo-300',
+                                                'Density': 'bg-pink-500/20 text-pink-300'
+                                            };
+                                            return (
+                                                <div key={i} className="bg-black/40 p-2 rounded border border-white/5 text-xs">
+                                                    <div className="flex justify-between items-start mb-1 flex-wrap gap-1">
+                                                        <span className="text-gray-500">Line {change.lineNumber}</span>
+                                                        <div className="flex gap-1">
+                                                            <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded">{change.categoryImproved}</span>
+                                                            {change.sourceAnalysis && (
+                                                                <span className={`text-[9px] px-1.5 py-0.5 rounded ${sourceColors[change.sourceAnalysis] || 'bg-gray-500/20 text-gray-300'}`}>
+                                                                    {change.sourceAnalysis}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-red-300/70 line-through mb-1">{change.originalLine}</div>
+                                                    <div className="text-green-400 mb-1">{change.newLine}</div>
+                                                    <div className="text-[10px] text-gray-500 italic">{change.reason}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Phonetic Fixes */}
+                            {song.executionPlan.phoneticFixes && song.executionPlan.phoneticFixes.length > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Phonetic Fixes</h4>
+                                    {song.executionPlan.phoneticFixes.map((fix, i) => (
+                                        <div key={i} className="bg-black/40 p-2 rounded border border-white/5 text-xs mb-2">
+                                            <div className="text-red-300 mb-1">⚠️ {fix.issue}</div>
+                                            <div className="text-green-400">✓ {fix.fix}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Furniture Additions */}
+                            {song.executionPlan.furnitureAdditions && song.executionPlan.furnitureAdditions.length > 0 && (
+                                <div>
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Furniture/Objects Added</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {song.executionPlan.furnitureAdditions.map((obj, i) => (
+                                            <span key={i} className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded border border-emerald-500/30">
+                                                {obj}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="bg-white/5 p-3 md:p-4 rounded-xl border border-white/10">
                         <h3 className="text-xs md:text-sm font-bold text-white mb-2 md:mb-3 flex items-center gap-2">
-                            <span className="text-suno-primary">⚡</span> Rewrite Studio
+                            <span className="text-suno-primary">⚡</span> Create Rewrite Plan
                         </h3>
                         
                         {/* AI Advice */}
@@ -839,15 +1603,147 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
                                  />
                                  Central Metaphor Logic
                              </label>
+                             <label className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-gray-300 cursor-pointer">
+                                 <input 
+                                    type="checkbox" 
+                                    checked={useCommercialMode} 
+                                    onChange={e => setUseCommercialMode(e.target.checked)}
+                                    className="rounded bg-black/50 border-gray-600 text-green-500 focus:ring-0"
+                                 />
+                                 Commercial Mode
+                             </label>
+                             <label 
+                                className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-purple-300 cursor-pointer"
+                                title="Enable dual-agent debate: Songwriter vs Producer"
+                             >
+                                 <input 
+                                    type="checkbox" 
+                                    checked={useAgentDebate} 
+                                    onChange={e => setUseAgentDebate(e.target.checked)}
+                                    className="rounded bg-black/50 border-gray-600 text-purple-500 focus:ring-0"
+                                 />
+                                 🎭 Agent Debate
+                             </label>
                         </div>
 
-                        <button 
-                            onClick={handleRewrite}
-                            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-2 md:py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 text-sm md:text-base"
-                        >
-                            <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                            Generate Version {song.title.includes('V') ? parseInt(song.title.split('V')[1]) + 1 : 2}
-                        </button>
+                        {/* PROPOSED PLAN DISPLAY */}
+                        {proposedPlan ? (
+                            <div className="mb-4 border border-yellow-500/30 rounded-lg overflow-hidden">
+                                <div className="bg-yellow-900/20 px-3 py-2 border-b border-yellow-500/30">
+                                    <h4 className="text-xs font-bold text-yellow-300">📋 Comprehensive Rewrite Plan (Awaiting Approval)</h4>
+                                </div>
+                                <div className="p-3 bg-black/30 max-h-96 overflow-y-auto custom-scrollbar space-y-3">
+                                    {/* Target Score */}
+                                    <div className="bg-black/40 p-3 rounded">
+                                        <div className="text-xs text-gray-400 mb-1">Target Score:</div>
+                                        <div className="text-2xl font-bold text-yellow-400">{proposedPlan.executionPlan.targetScore}/100</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">
+                                            Current: {song.analysis.overallScore} → Target: {proposedPlan.executionPlan.targetScore} 
+                                            <span className="text-green-400 ml-2 font-bold">
+                                                (+{proposedPlan.executionPlan.targetScore - song.analysis.overallScore})
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Rationale */}
+                                    <div className="bg-black/40 p-3 rounded">
+                                        <div className="text-xs font-bold text-blue-400 mb-2">Plan Rationale:</div>
+                                        <p className="text-xs text-gray-300 leading-relaxed">{proposedPlan.rationale}</p>
+                                    </div>
+
+                                    {/* Expected Impact */}
+                                    <div className="bg-black/40 p-3 rounded">
+                                        <div className="text-xs font-bold text-green-400 mb-2">Expected Impact:</div>
+                                        <p className="text-xs text-gray-300 leading-relaxed">{proposedPlan.expectedImpact}</p>
+                                    </div>
+
+                                    {/* Data Sources */}
+                                    <div className="bg-black/40 p-3 rounded">
+                                        <div className="text-xs font-bold text-purple-400 mb-2">Based On:</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {proposedPlan.basedOn.originalAnalysis && <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded">Original Analysis</span>}
+                                            {proposedPlan.basedOn.dnaMatchInsights && <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-1 rounded">DNA Match Insights</span>}
+                                            {proposedPlan.basedOn.chatDiscussion && <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded">Chat Discussion</span>}
+                                        </div>
+                                    </div>
+
+                                    {/* Line Changes Count */}
+                                    <div className="bg-black/40 p-3 rounded">
+                                        <div className="text-xs text-gray-400">
+                                            📝 <span className="font-bold">{proposedPlan.executionPlan.lineLevelChanges.length}</span> line changes planned
+                                            {proposedPlan.executionPlan.phoneticFixes && proposedPlan.executionPlan.phoneticFixes.length > 0 && (
+                                                <> • 🎤 <span className="font-bold">{proposedPlan.executionPlan.phoneticFixes.length}</span> phonetic fixes</>
+                                            )}
+                                            {proposedPlan.executionPlan.furnitureAdditions && proposedPlan.executionPlan.furnitureAdditions.length > 0 && (
+                                                <> • 🪑 <span className="font-bold">{proposedPlan.executionPlan.furnitureAdditions.length}</span> objects added</>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* DNA Match Insights Applied */}
+                                    {proposedPlan.executionPlan.dnaMatchInsights && (
+                                        <div className="bg-amber-900/20 border border-amber-500/30 p-3 rounded">
+                                            <div className="text-xs font-bold text-amber-300 mb-2">🧬 A-Tier Techniques Applied:</div>
+                                            <div className="space-y-1 text-[10px] text-gray-300">
+                                                {proposedPlan.executionPlan.dnaMatchInsights.structural.length > 0 && (
+                                                    <div>📐 Structural: {proposedPlan.executionPlan.dnaMatchInsights.structural.length} techniques</div>
+                                                )}
+                                                {proposedPlan.executionPlan.dnaMatchInsights.wordSpacing.length > 0 && (
+                                                    <div>🎤 Word Spacing: {proposedPlan.executionPlan.dnaMatchInsights.wordSpacing.length} techniques</div>
+                                                )}
+                                                {proposedPlan.executionPlan.dnaMatchInsights.sonic.length > 0 && (
+                                                    <div>🎧 Sonic: {proposedPlan.executionPlan.dnaMatchInsights.sonic.length} techniques</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Approval Buttons */}
+                                <div className="p-3 bg-black/20 border-t border-white/5 flex gap-2">
+                                    <button 
+                                        onClick={handleApprovePlan}
+                                        disabled={isRewriting}
+                                        className="flex-grow bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold py-2 rounded-lg transition flex items-center justify-center gap-2"
+                                    >
+                                        {isRewriting ? (
+                                            <>Executing Plan...</>
+                                        ) : (
+                                            <>
+                                                <span>✓</span> Approve & Execute
+                                            </>
+                                        )}
+                                    </button>
+                                    <button 
+                                        onClick={() => setProposedPlan(null)}
+                                        disabled={isRewriting}
+                                        className="px-4 bg-red-600/50 hover:bg-red-600 disabled:bg-gray-700 text-white font-bold py-2 rounded-lg transition"
+                                    >
+                                        ✕ Reject
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={handleGeneratePlan}
+                                disabled={isGeneratingPlan || !song.analysis}
+                                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-gray-700 disabled:to-gray-700 text-white font-bold py-2 md:py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 text-sm md:text-base"
+                            >
+                                {isGeneratingPlan ? (
+                                    <>
+                                        <span className="animate-spin">⏳</span> Generating Comprehensive Plan...
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>📋</span> Generate Rewrite Plan for Review
+                                    </>
+                                )}
+                            </button>
+                        )}
+
+                        <p className="text-[10px] text-gray-500 mt-2 text-center">
+                            The plan will integrate all analysis data (scores, sonic issues, DNA match insights, chat discussion) for your review before execution.
+                        </p>
                     </div>
                 </div>
               </div>
@@ -906,6 +1802,21 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
           </div>
         )}
       </div>
+
+      {/* Floating Analysis Agent - Orchestrator */}
+      <FloatingAnalysisAgent
+        song={song}
+        onUpdateSong={onUpdateSong}
+        onPlanUpdate={(plan) => {
+          setProposedPlan(plan);
+          onUpdateSong({ ...song, proposedPlan: plan });
+        }}
+        isVisible={isAgentVisible}
+        onToggle={() => setIsAgentVisible(!isAgentVisible)}
+        focusedSection={agentFocusedSection}
+        highlightedText={highlightedText}
+        onClearHighlight={() => setHighlightedText('')}
+      />
     </div>
   );
 };

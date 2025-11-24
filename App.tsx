@@ -5,6 +5,8 @@ import { ResultDisplay } from './components/ResultDisplay';
 import { Sidebar } from './components/Sidebar';
 import { MiniPlayer } from './components/MiniPlayer';
 import { FullPlayerView } from './components/FullPlayerView';
+import { ValidationDashboard } from './components/ValidationDashboard';
+import { LearningInsightsDashboard } from './components/LearningInsightsDashboard';
 import { SongInputs, GeneratedSong, StructureType } from './types';
 
 const INITIAL_INPUTS: SongInputs = {
@@ -20,6 +22,7 @@ const INITIAL_INPUTS: SongInputs = {
   syllablePattern: '',
   advancedLyricLogic: false,
   centralMetaphorLogic: false,
+  commercialMode: false,
   model: 'V4',
   instrumental: false
 };
@@ -33,6 +36,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isInputPanelOpen, setIsInputPanelOpen] = useState(true);
+  const [showValidationDashboard, setShowValidationDashboard] = useState(false);
+  const [showLearningDashboard, setShowLearningDashboard] = useState(false);
 
   // Handle persistence of history
   useEffect(() => {
@@ -116,7 +121,8 @@ export default function App() {
     newLyrics: string, 
     technicalExplanation: string,
     advancedLogic: boolean,
-    metaphorLogic: boolean
+    metaphorLogic: boolean,
+    commercialMode: boolean
   ) => {
     // Determine version number
     let versionNum = 2;
@@ -142,6 +148,7 @@ export default function App() {
       coverArtPrompt: baseSong.coverArtPrompt,
       hasAdvancedLogic: advancedLogic,
       hasMetaphorLogic: metaphorLogic,
+      hasCommercialMode: commercialMode,
       negativePrompt: baseSong.negativePrompt
     };
 
@@ -187,8 +194,24 @@ export default function App() {
             </div>
             <span className="text-xl font-bold tracking-tight">Suno v5 <span className="text-suno-primary font-light">Architect</span></span>
           </div>
-          <div className="text-xs text-gray-500 font-mono hidden md:block">
-            Powered by Gemini 3.0 Pro
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowLearningDashboard(true)}
+              className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold transition-colors"
+              title="View Learning Insights"
+            >
+              🧠 Learning
+            </button>
+            <button
+              onClick={() => setShowValidationDashboard(true)}
+              className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 text-xs font-semibold transition-colors"
+              title="Quality Validation Study"
+            >
+              🔬 Validation
+            </button>
+            <div className="text-xs text-gray-500 font-mono hidden lg:block ml-2">
+              Powered by Gemini 3.0 Pro
+            </div>
           </div>
         </div>
       </header>
@@ -202,6 +225,7 @@ export default function App() {
           onClearHistory={handleClearHistory}
           isOpen={isSidebarOpen}
           onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+          currentInputs={inputs}
         />
 
         {/* Main Content Area */}
@@ -265,6 +289,14 @@ export default function App() {
       </div>
       <MiniPlayer />
       <FullPlayerView />
+      
+      {/* Modal Overlays */}
+      {showValidationDashboard && (
+        <ValidationDashboard onClose={() => setShowValidationDashboard(false)} />
+      )}
+      {showLearningDashboard && (
+        <LearningInsightsDashboard onClose={() => setShowLearningDashboard(false)} />
+      )}
     </div>
   );
 }

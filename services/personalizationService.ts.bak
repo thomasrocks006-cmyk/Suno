@@ -1,0 +1,372 @@
+/**
+ * PERSONALIZATION SERVICE
+ * Handles AI-powered personalization features:
+ * - Location landmark extraction
+ * - Metaphor generation based on topic/mood/genre
+ * - Power line generation aligned with metaphor
+ */
+
+import { GoogleGenAI } from "@google/genai";
+
+// @ts-ignore - Vite env types
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy_key_for_build' });
+
+export interface MetaphorSuggestion {
+  metaphor: string;
+  type: 'visual' | 'spatial' | 'symbolic' | 'auditory' | 'natural' | 'custom';
+  description: string;
+  bestFit: string;
+}
+
+export interface PowerLineSuggestion {
+  text: string;
+  suggestedPlacement: string[];
+  syllableCount: number;
+  explanation: string;
+}
+
+export interface LocationContext {
+  city: string;
+  neighborhood?: string;
+  country: string;
+  landmarks: string[];
+  culturalNotes: string[];
+}
+
+/**
+ * Extract location-specific landmarks and cultural details
+ */
+export const extractLocationContext = async (
+  locationInput: string
+): Promise<LocationContext> => {
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-2.0-flash-exp",
+    generationConfig: {
+      temperature: 0.7,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 1024,
+    }
+  });
+
+  const prompt = `You are a location research assistant. Extract specific details from this location for songwriting purposes.
+
+Location: "${locationInput}"
+
+Provide:
+1. City name
+2. Neighborhood (if mentioned)
+3. Country
+4. 3-5 specific landmarks, streets, or famous locations in that area
+5. 3-5 cultural notes (local slang, phrases, cultural references, vibe)
+
+Format your response as JSON:
+{
+  "city": "city name",
+  "neighborhood": "neighborhood or null",
+  "country": "country",
+  "landmarks": ["landmark 1", "landmark 2", ...],
+  "culturalNotes": ["note 1", "note 2", ...]
+}
+
+Only provide factual, well-known details. If the location is unclear, make your best guess.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        city: parsed.city || locationInput,
+        neighborhood: parsed.neighborhood || undefined,
+        country: parsed.country || '',
+        landmarks: parsed.landmarks || [],
+        culturalNotes: parsed.culturalNotes || []
+      };
+    }
+  } catch (error) {
+    console.error('Location extraction failed:', error);
+  }
+
+  // Fallback
+  return {
+    city: locationInput,
+    country: '',
+    landmarks: [],
+    culturalNotes: []
+  };
+};
+
+/**
+ * Generate metaphor suggestions based on topic, mood, and genre
+ */
+export const generateMetaphorSuggestions = async (
+  topic: string,
+  mood: string,
+  genre: string
+): Promise<MetaphorSuggestion[]> => {
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-2.0-flash-exp",
+    generationConfig: {
+      temperature: 0.9,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 2048,
+    }
+  });
+
+  const prompt = `You are a creative songwriting assistant specializing in metaphors and imagery.
+
+Song Context:
+- Topic: "${topic}"
+- Mood: "${mood}"
+- Genre: "${genre}"
+
+Generate 5 powerful central metaphor options for this song. Each metaphor should:
+1. Align with the topic and mood
+2. Be genre-appropriate
+3. Be specific and visual/sensory
+4. Work as a recurring theme throughout the song
+
+For each metaphor, categorize it as:
+- visual (sight-based imagery)
+- spatial (physical space/place)
+- symbolic (represents abstract concept)
+- auditory (sound-based)
+- natural (nature/elements)
+
+Format as JSON array:
+[
+  {
+    "metaphor": "Fading Polaroids",
+    "type": "visual",
+    "description": "Memories losing color and clarity over time",
+    "bestFit": "Storytelling, nostalgic imagery, works well for indie/folk"
+  },
+  ...
+]
+
+Be creative and avoid clichés. Provide metaphors that feel fresh and specific to this song.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    // Extract JSON from response
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return parsed.slice(0, 5); // Ensure only 5 suggestions
+    }
+  } catch (error) {
+    console.error('Metaphor generation failed:', error);
+  }
+
+  // Fallback metaphors
+  return [
+    {
+      metaphor: "Fading Photograph",
+      type: "visual",
+      description: "Memories becoming less clear over time",
+      bestFit: "Universal, works with most genres"
+    },
+    {
+      metaphor: "Empty Room",
+      type: "spatial",
+      description: "Physical absence, loneliness",
+      bestFit: "Melancholic, introspective songs"
+    },
+    {
+      metaphor: "Burning Bridge",
+      type: "symbolic",
+      description: "Irreversible change, moving forward",
+      bestFit: "Empowerment, closure themes"
+    },
+    {
+      metaphor: "Silent Phone",
+      type: "symbolic",
+      description: "Lack of communication, waiting",
+      bestFit: "Modern relationships, longing"
+    },
+    {
+      metaphor: "Storm Passing",
+      type: "natural",
+      description: "Difficulty giving way to calm",
+      bestFit: "Hopeful resolution, overcoming hardship"
+    }
+  ];
+};
+
+/**
+ * Generate power lines that complement the chosen metaphor
+ */
+export const generatePowerLines = async (
+  metaphor: string,
+  topic: string,
+  mood: string,
+  genre: string,
+  locationContext?: LocationContext,
+  memoryDescription?: string
+): Promise<PowerLineSuggestion[]> => {
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-2.0-flash-exp",
+    generationConfig: {
+      temperature: 0.85,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 2048,
+    }
+  });
+
+  let contextSection = '';
+  if (locationContext) {
+    contextSection += `\nLocation Context: ${locationContext.city}, ${locationContext.country}`;
+    if (locationContext.landmarks.length > 0) {
+      contextSection += `\nLandmarks available: ${locationContext.landmarks.join(', ')}`;
+    }
+  }
+  if (memoryDescription) {
+    contextSection += `\nMemory Anchor: ${memoryDescription}`;
+  }
+
+  const prompt = `You are a professional songwriter crafting powerful, memorable lines.
+
+Song Context:
+- Central Metaphor: "${metaphor}"
+- Topic: "${topic}"
+- Mood: "${mood}"
+- Genre: "${genre}"${contextSection}
+
+Generate 7 powerful lyric lines that:
+1. Complement and expand on the central metaphor
+2. Are emotionally resonant with the mood
+3. Fit the genre's style (${genre} expectations)
+4. Have strong syllable rhythm (8-14 syllables ideal)
+5. Could work as hooks, chorus lines, or climactic moments
+
+For each line, suggest where it would fit best:
+- verse1, verse2, verse3
+- pre-chorus
+- chorus (if it's hook-worthy)
+- bridge (if it's climactic)
+- outro
+
+Format as JSON array:
+[
+  {
+    "text": "Your smile's blurring at the edges now",
+    "suggestedPlacement": ["verse2", "pre-chorus"],
+    "syllableCount": 11,
+    "explanation": "Visual callback to fading metaphor, melancholic tone"
+  },
+  ...
+]
+
+Make each line unique and avoid repetition. Focus on imagery and emotion.`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    // Extract JSON from response
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return parsed.slice(0, 7); // Ensure only 7 suggestions
+    }
+  } catch (error) {
+    console.error('Power line generation failed:', error);
+  }
+
+  // Fallback power lines
+  return [
+    {
+      text: "Everything we had is slipping away",
+      suggestedPlacement: ["chorus", "verse2"],
+      syllableCount: 11,
+      explanation: "Universal theme of loss"
+    },
+    {
+      text: "I still see your face in every crowd",
+      suggestedPlacement: ["verse1", "verse2"],
+      syllableCount: 10,
+      explanation: "Longing and memory"
+    },
+    {
+      text: "Time can't heal what we broke that night",
+      suggestedPlacement: ["bridge", "verse3"],
+      syllableCount: 10,
+      explanation: "Regret and permanence"
+    }
+  ];
+};
+
+/**
+ * Extract memory elements from a user's memory description
+ */
+export const extractMemoryElements = async (
+  memoryDescription: string
+): Promise<{
+  timeOfDay?: string;
+  setting?: string;
+  sensoryDetails?: string[];
+  emotion?: string;
+}> => {
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-2.0-flash-exp",
+    generationConfig: {
+      temperature: 0.6,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 512,
+    }
+  });
+
+  const prompt = `Extract key story elements from this memory for songwriting:
+
+"${memoryDescription}"
+
+Identify:
+1. Time of day (if mentioned): morning, afternoon, evening, night, dawn, dusk, etc.
+2. Setting/location: where did this happen?
+3. Sensory details: sights, sounds, smells, textures, tastes mentioned or implied
+4. Core emotion: what feeling dominates this memory?
+
+Format as JSON:
+{
+  "timeOfDay": "night",
+  "setting": "beach",
+  "sensoryDetails": ["sound of waves", "cold sand", "smell of salt air"],
+  "emotion": "bittersweet"
+}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    // Extract JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch (error) {
+    console.error('Memory extraction failed:', error);
+  }
+
+  return {};
+};
+
+/**
+ * Calculate syllable count (rough estimate)
+ */
+export const estimateSyllables = (text: string): number => {
+  // Remove punctuation and convert to lowercase
+  const cleaned = text.toLowerCase().replace(/[^a-z\s]/g, '');
+  // Count vowel groups as rough syllable estimate
+  const vowelGroups = cleaned.match(/[aeiouy]+/g);
+  return vowelGroups ? vowelGroups.length : 1;
+};

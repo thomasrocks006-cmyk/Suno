@@ -1,0 +1,196 @@
+/**
+ * DNA MATCH LYRICS FETCHER
+ * Fetches actual lyrics from reference songs for deeper structural comparison
+ * Uses Genius API (requires API key)
+ */
+
+import { SongDNAMatch } from '../types';
+
+const GENIUS_API_KEY = import.meta.env.VITE_GENIUS_API_KEY;
+const GENIUS_BASE_URL = 'https://api.genius.com';
+
+interface GeniusSearchResult {
+  response: {
+    hits: Array<{
+      result: {
+        id: number;
+        title: string;
+        primary_artist: { name: string };
+        url: string;
+      }
+    }>
+  }
+}
+
+/**
+ * Search Genius for a song and get its lyrics URL
+ */
+export const searchGeniusSong = async (
+  songTitle: string,
+  artist: string
+): Promise<{ id: number; url: string } | null> => {
+  
+  if (!GENIUS_API_KEY) {
+    console.warn('GENIUS_API_KEY not configured');
+    return null;
+  }
+
+  try {
+    const query = encodeURIComponent(`${songTitle} ${artist}`);
+    const response = await fetch(
+      `${GENIUS_BASE_URL}/search?q=${query}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${GENIUS_API_KEY}`
+        }
+      }
+    );
+
+    const data: GeniusSearchResult = await response.json();
+    
+    if (data.response.hits.length === 0) {
+      console.warn(`No Genius results for "${songTitle}" by ${artist}`);
+      return null;
+    }
+
+    const hit = data.response.hits[0].result;
+    return {
+      id: hit.id,
+      url: hit.url
+    };
+  } catch (error) {
+    console.error('Genius search failed:', error);
+    return null;
+  }
+};
+
+/**
+ * Scrape lyrics from Genius song page
+ * NOTE: This requires a backend proxy due to CORS restrictions
+ * Alternative: Use lyrics.ovh API or similar
+ */
+export const fetchGeniusLyrics = async (geniusUrl: string): Promise<string | null> => {
+  // This would need a backend proxy to avoid CORS
+  // For now, return null and provide the URL for manual viewing
+  console.warn('Direct lyrics fetching requires backend proxy due to CORS');
+  return null;
+};
+
+/**
+ * Alternative: Use lyrics.ovh API (no auth required)
+ */
+export const fetchLyricsFromLyricsOvh = async (
+  artist: string,
+  title: string
+): Promise<string | null> => {
+  try {
+    const response = await fetch(
+      `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`
+    );
+    
+    if (!response.ok) {
+      console.warn(`Lyrics.ovh: No lyrics found for "${title}" by ${artist}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.lyrics || null;
+  } catch (error) {
+    console.error('Lyrics.ovh fetch failed:', error);
+    return null;
+  }
+};
+
+/**
+ * Main function: Fetch reference song lyrics for DNA Match
+ * Tries multiple sources in order
+ */
+export const fetchDNAMatchLyrics = async (
+  dnaMatch: SongDNAMatch
+): Promise<{ lyrics: string | null; source: string; url?: string }> => {
+  
+  // Extract song title and artist
+  const artist = dnaMatch.artist;
+  const title = dnaMatch.referenceSong.replace(` by ${artist}`, '').trim();
+
+  // Try Lyrics.ovh first (no auth, no CORS)
+  const lyricsOvh = await fetchLyricsFromLyricsOvh(artist, title);
+  if (lyricsOvh) {
+    return {
+      lyrics: lyricsOvh,
+      source: 'Lyrics.ovh'
+    };
+  }
+
+  // Try Genius (requires API key, may need proxy)
+  const geniusResult = await searchGeniusSong(title, artist);
+  if (geniusResult) {
+    // For now, we can't fetch directly due to CORS
+    // But we can provide the URL for the user to view
+    return {
+      lyrics: null,
+      source: 'Genius',
+      url: geniusResult.url
+    };
+  }
+
+  return {
+    lyrics: null,
+    source: 'None'
+  };
+};
+
+/**
+ * Analyze structural differences between our song and reference lyrics
+ * This runs AFTER we fetch the lyrics
+ */
+export const compareStructuralPatterns = async (
+  ourLyrics: string,
+  referenceLyrics: string,
+  aiModel: any // Gemini model instance
+): Promise<{
+  structuralDifferences: string[];
+  recommendations: string[];
+}> => {
+  
+  const prompt = `
+You are a structural analysis expert. Compare these two songs' structures:
+
+**OUR SONG:**
+${ourLyrics}
+
+**REFERENCE A-TIER SONG:**
+${referenceLyrics}
+
+**ANALYZE:**
+1. Section lengths (verse vs chorus word count)
+2. Hook placement (which line is the catchiest?)
+3. Repetition patterns (what repeats and how often?)
+4. Bridge presence and purpose
+5. Structural formula (e.g., V-C-V-C-B-C vs V-V-C-V-C-C)
+
+**OUTPUT JSON:**
+{
+  "structuralDifferences": [
+    "Our verse is 40 words, theirs is 25 words - ours drags",
+    "They repeat chorus 4x, we only do 2x - less memorable",
+    "Their hook appears in first 4 lines, ours in line 8"
+  ],
+  "recommendations": [
+    "Cut verse 1 by 35% to match reference pacing",
+    "Add one more chorus repeat for memorability",
+    "Move strongest line to top of verse 1 (hook earlier)"
+  ]
+}
+  `;
+
+  const result = await aiModel.generateContent({
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      temperature: 0.7
+    }
+  });
+
+  return JSON.parse(result.response.text());
+};

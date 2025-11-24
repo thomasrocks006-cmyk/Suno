@@ -1,9 +1,11 @@
 
 import React, { useState } from 'react';
-import { SongInputs, StructureType, AnalysisResponse, FeedbackItem, InferredAttributes, SunoModel } from '../types';
+import { SongInputs, StructureType, AnalysisResponse, FeedbackItem, InferredAttributes, SunoModel, PersonalizationContext } from '../types';
 import { StyleBuilderModal } from './StyleBuilderModal';
 import { InstrumentSelector } from './InstrumentSelector';
+import { PersonalizationModal } from './PersonalizationModal';
 import { analyzeSongConcept, inferAttributesFromReference } from '../services/geminiService';
+import { GENRE_PROFILES } from '../services/genreProfileService';
 
 interface InputFormProps {
   inputs: SongInputs;
@@ -31,11 +33,14 @@ const VOCAL_GUIDES = [
 export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmit, loadingStatus }) => {
   const [isStyleBuilderOpen, setIsStyleBuilderOpen] = useState(false);
   const [isInstrumentSelectorOpen, setIsInstrumentSelectorOpen] = useState(false);
+  const [isPersonalizationOpen, setIsPersonalizationOpen] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [suggestions, setSuggestions] = useState<InferredAttributes | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isInferring, setIsInferring] = useState(false);
   const [activeSection, setActiveSection] = useState<'core' | 'style' | 'lyrics' | 'advanced'>('core');
+  const [selectedGenreProfile, setSelectedGenreProfile] = useState<string>('');
+  const [activeFeedback, setActiveFeedback] = useState<keyof SongInputs | null>(null);
 
   const toggleSection = (section: 'core' | 'style' | 'lyrics' | 'advanced') => {
     setActiveSection(activeSection === section ? section : section);
@@ -99,6 +104,10 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
         delete newSuggestions[field];
         setSuggestions(newSuggestions);
     }
+  };
+
+  const handleApplyPersonalization = (personalizationContext: PersonalizationContext) => {
+    handleChange('personalization', personalizationContext);
   };
 
   const applyInferredValue = (field: keyof SongInputs, value: string) => {
@@ -288,6 +297,49 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
             {renderSuggestion('topic')}
           </div>
 
+          {/* Personalization Button */}
+          <div className="relative bg-gradient-to-r from-purple-900/20 via-pink-900/20 to-purple-900/20 border border-purple-500/30 rounded-lg p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-grow">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">✨</span>
+                  <h3 className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+                    Personalization Studio
+                  </h3>
+                  {inputs.personalization?.enabled && (
+                    <span className="text-[10px] bg-gradient-to-r from-purple-500 to-pink-500 px-2 py-0.5 rounded-full text-white font-bold">
+                      ACTIVE
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mb-2">
+                  Ground this song in your real world—add your location, memories, and custom metaphors
+                </p>
+                
+                {inputs.personalization?.enabled && (
+                  <div className="text-[10px] text-purple-300 bg-black/30 rounded p-2 border border-purple-500/20 space-y-1">
+                    {inputs.personalization.yourWorld.location && (
+                      <div>📍 {inputs.personalization.yourWorld.location.city}, {inputs.personalization.yourWorld.location.country}</div>
+                    )}
+                    {inputs.personalization.metaphorLab && (
+                      <div>💭 Metaphor: {inputs.personalization.metaphorLab.chosenMetaphor}</div>
+                    )}
+                    {inputs.personalization.powerLines.selectedLines.length > 0 && (
+                      <div>💎 {inputs.personalization.powerLines.selectedLines.length} power line(s) selected</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={() => setIsPersonalizationOpen(true)}
+                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 whitespace-nowrap"
+              >
+                {inputs.personalization?.enabled ? 'Edit' : 'Personalize'}
+              </button>
+            </div>
+          </div>
+
           {/* Genre */}
           <div className="relative">
             <div className="flex justify-between items-center mb-1">
@@ -317,6 +369,75 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
               {renderFeedback('genre')}
             </div>
             {renderSuggestion('genre')}
+            
+            {/* Optional Genre Profile Selector */}
+            <div className="mt-2 bg-purple-900/20 border border-purple-500/30 rounded-lg p-3">
+              <div className="flex items-start gap-2 mb-2">
+                <div className="text-purple-400 mt-0.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                  </svg>
+                </div>
+                <div className="flex-grow">
+                  <label className="block text-xs font-bold text-purple-300 mb-1">
+                    🎯 Genre Profile (Optional)
+                  </label>
+                  <p className="text-[10px] text-gray-400 mb-2 leading-tight">
+                    Select a profile for genre-specific expectations (hook placement, syllable density, etc.). Preserves creative freedom—AI adapts, not enforces.
+                  </p>
+                  <select
+                    value={selectedGenreProfile}
+                    onChange={(e) => {
+                      const profileId = e.target.value;
+                      setSelectedGenreProfile(profileId);
+                      
+                      // Update the genreProfile field in inputs
+                      handleChange('genreProfile', profileId || undefined);
+                      
+                      // Optionally auto-fill genre field if empty
+                      if (profileId && !inputs.genre) {
+                        const profile = GENRE_PROFILES[profileId];
+                        handleChange('genre', profile.name);
+                      }
+                      
+                      // Add genre expectations as custom instructions hint
+                      if (profileId) {
+                        const profile = GENRE_PROFILES[profileId];
+                        const hint = `\n\n[Genre Profile: ${profile.name} - ${profile.description}]`;
+                        if (!inputs.customInstructions.includes(hint)) {
+                          handleChange('customInstructions', inputs.customInstructions + hint);
+                        }
+                      }
+                    }}
+                    className="w-full bg-black/50 border border-purple-500/30 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none transition text-white"
+                  >
+                    <option value="">None (Full Creative Freedom)</option>
+                    {Object.values(GENRE_PROFILES).map(profile => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name} - {profile.description}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedGenreProfile && GENRE_PROFILES[selectedGenreProfile] && (
+                    <div className="mt-2 text-[9px] text-gray-500 bg-black/40 p-2 rounded border border-white/5">
+                      <div className="font-bold text-purple-400 mb-1">Profile Expectations:</div>
+                      <div className="space-y-0.5">
+                        <div>• Hook Position: <span className="text-white">{GENRE_PROFILES[selectedGenreProfile].structure.hookPosition}</span></div>
+                        <div>• Chorus Repeats: <span className="text-white">{GENRE_PROFILES[selectedGenreProfile].structure.chorusRepeats.min}-{GENRE_PROFILES[selectedGenreProfile].structure.chorusRepeats.max}</span></div>
+                        <div>• Bridge: <span className="text-white">{GENRE_PROFILES[selectedGenreProfile].structure.bridgeRequired ? 'Required' : 'Optional'}</span></div>
+                        <div>• Top Priority Categories: <span className="text-white">
+                          {Object.entries(GENRE_PROFILES[selectedGenreProfile].scoreExpectations)
+                            .filter(([_, exp]) => exp.priority === 'high')
+                            .map(([cat, _]) => cat.replace(/([A-Z])/g, ' $1').trim())
+                            .slice(0, 3)
+                            .join(', ')}
+                        </span></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -478,6 +599,27 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
                 </div>
               </div>
             </div>
+
+            {/* 3. Commercial Mode (Less is More) */}
+            <div 
+              className="bg-suno-card/50 border border-white/5 rounded-lg p-3 hover:border-green-500/30 transition-colors cursor-pointer"
+              onClick={() => handleChange('commercialMode', !inputs.commercialMode)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                   <div className={`w-10 h-6 rounded-full relative transition-colors duration-300 ${inputs.commercialMode ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gray-700'}`}>
+                     <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-md transform transition-transform duration-300 ${inputs.commercialMode ? 'translate-x-4' : ''}`} />
+                   </div>
+                   <div>
+                     <div className="flex items-center gap-2">
+                       <span className={`text-sm font-bold ${inputs.commercialMode ? 'text-white' : 'text-gray-400'}`}>Commercial Mode</span>
+                       {inputs.commercialMode && <span className="text-[10px] bg-green-500 px-1.5 rounded text-white font-bold">RADIO READY</span>}
+                     </div>
+                     <div className="text-[11px] text-gray-500">"Less is More" - Short verses, repetitive choruses, high listenability (Suno performs best with this)</div>
+                   </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Extra Instructions */}
@@ -582,6 +724,16 @@ export const InputForm: React.FC<InputFormProps> = ({ inputs, setInputs, onSubmi
         selectedInstruments={inputs.instruments || []}
         onChange={(newInstruments) => handleChange('instruments', newInstruments)}
         suggestedInstruments={suggestions?.instruments}
+      />
+
+      <PersonalizationModal
+        isOpen={isPersonalizationOpen}
+        onClose={() => setIsPersonalizationOpen(false)}
+        onApply={handleApplyPersonalization}
+        topic={inputs.topic}
+        mood={inputs.mood}
+        genre={inputs.genre}
+        initialContext={inputs.personalization}
       />
     </>
   );

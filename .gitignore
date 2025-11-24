@@ -19,3 +19,6 @@ dist-ssr
 .DS_Store
 *.suo
 .env
+
+# Repository indexing
+.repo-index
