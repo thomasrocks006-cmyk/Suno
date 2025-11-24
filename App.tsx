@@ -13,6 +13,7 @@ import { SongInputs, GeneratedSong, StructureType } from './types';
 // Lazy load heavy modal components for better initial bundle size
 const ValidationDashboard = lazy(() => import('./components/ValidationDashboard').then(m => ({ default: m.ValidationDashboard })));
 const LearningInsightsDashboard = lazy(() => import('./components/LearningInsightsDashboard').then(m => ({ default: m.LearningInsightsDashboard })));
+const CostDashboard = lazy(() => import('./components/CostDashboard').then(m => ({ default: m.default })));
 
 const INITIAL_INPUTS: SongInputs = {
   artistReference: '',
@@ -43,6 +44,7 @@ export default function App() {
   const [isInputPanelOpen, setIsInputPanelOpen] = useState(true);
   const [showValidationDashboard, setShowValidationDashboard] = useState(false);
   const [showLearningDashboard, setShowLearningDashboard] = useState(false);
+  const [showCostDashboard, setShowCostDashboard] = useState(false);
   
   // Agent Debate Modal state
   const [showDebateModal, setShowDebateModal] = useState(false);
@@ -227,6 +229,13 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowCostDashboard(true)}
+              className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-900/30 hover:bg-green-900/50 text-green-300 text-xs font-semibold transition-colors"
+              title="View Cost Dashboard"
+            >
+              💰 Costs
+            </button>
+            <button
               onClick={() => setShowLearningDashboard(true)}
               className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold transition-colors"
               title="View Learning Insights"
@@ -342,6 +351,11 @@ export default function App() {
       <FullPlayerView />
       
       {/* Modal Overlays */}
+      {showCostDashboard && (
+        <Suspense fallback={<SkeletonLoader type="dashboard" />}>
+          <CostDashboard onClose={() => setShowCostDashboard(false)} />
+        </Suspense>
+      )}
       {showValidationDashboard && (
         <Suspense fallback={<SkeletonLoader type="dashboard" />}>
           <ValidationDashboard onClose={() => setShowValidationDashboard(false)} />
