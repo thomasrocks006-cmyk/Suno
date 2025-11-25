@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { SongInputs, GeneratedSong, StructureType, AnalysisResponse, SongAnalysis, SongVariation, InferredAttributes, EvaluationResult, FIXED_SCORING_CATEGORIES } from "../types";
+import { SongInputs, GeneratedSong, StructureType, AnalysisResponse, SongAnalysis, SongVariation, InferredAttributes, EvaluationResult, FIXED_SCORING_CATEGORIES, RewritePlanProposal, ChatMessage } from "../types";
 import { validateCompleteWorkflow, generateValidatedPlan, WorkflowState } from "./planValidationService";
 import { getCachedAnalysis, setCachedAnalysis, clearExpiredCache } from "./cacheService";
 import { trackGeneration, trackAnalysis, trackRewrite, trackVariation } from "./costTrackingService";

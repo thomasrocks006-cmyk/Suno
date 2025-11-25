@@ -159,10 +159,10 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             <div className="bg-black/30 rounded p-3 border border-cyan-500/20">
               <div className="text-xs font-bold text-cyan-400 mb-2">Agent Participation</div>
               <div className="space-y-1 text-xs">
-                {Object.entries(coverageReport.agentParticipation).map(([agent, lines]) => (
+                {Object.entries(coverageReport.agentParticipation).map(([agent, data]) => (
                   <div key={agent} className="flex justify-between">
                     <span className="text-gray-300">{agent}:</span>
-                    <span className="text-white font-medium">{lines}</span>
+                    <span className="text-white font-medium">{data.linesReviewed} ({data.percentage}%)</span>
                   </div>
                 ))}
               </div>
@@ -193,7 +193,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
                 <div className="space-y-1 text-xs max-h-24 overflow-y-auto">
                   {coverageReport.debateHotspots.slice(0, 3).map((item, i) => (
                     <div key={i} className="text-gray-300 text-[10px]">
-                      L{item.lineNumber}: {item.agentCount} agents
+                      L{item.lineNumber}: {item.disagreementLevel}
                     </div>
                   ))}
                 </div>
@@ -385,7 +385,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
                   <h5 className="text-xs md:text-sm font-bold text-white">Sonic & Structural Analysis (Producer's Ear)</h5>
               </div>
               <button 
-                  onClick={() => onTextHighlight(song.analysis?.sonicTexture?.issuesFound.join(', ') || '')}
+                  onClick={() => onTextHighlight(song.analysis?.sonicAnalysis?.phonetics || '')}
                   className="text-[10px] bg-purple-500/20 hover:bg-purple-500/40 text-purple-300 px-2 py-1 rounded transition"
               >
                   Discuss with Agent
@@ -462,7 +462,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
                       </div>
                   </div>
                   <button 
-                      onClick={() => onTextHighlight(song.analysis?.dnaMatch?.matchedSong || '')}
+                      onClick={() => onTextHighlight(song.analysis?.dnaMatch?.referenceSong || '')}
                       className="text-[10px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-2 py-1 rounded transition whitespace-nowrap"
                   >
                       Discuss with Agent

@@ -8,7 +8,7 @@ interface FloatingAnalysisAgentProps {
   onPlanUpdate: (plan: RewritePlanProposal) => void;
   isVisible: boolean;
   onToggle: () => void;
-  focusedSection?: 'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'lineByLine' | 'general';
+  focusedSection?: 'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'general';
   highlightedText?: string;
   onClearHighlight?: () => void;
 }
