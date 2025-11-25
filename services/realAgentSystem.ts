@@ -54,7 +54,7 @@ export async function generateInitialDraft(
   const prompt = buildGenerationPrompt(inputs);
   
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash", // Fast for initial draft
+    model: "gemini-3-pro-preview", // Premium quality for initial draft
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       systemInstruction,
@@ -216,7 +216,7 @@ Return JSON:
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-pro-preview", // Premium for lyrical analysis
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
@@ -249,7 +249,7 @@ Return JSON with your critique including specific line issues and strengths.
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-pro-preview", // Premium for narrative analysis
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
@@ -317,7 +317,7 @@ Return JSON with structure recommendations.
 `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-pro-preview", // Pro model for technical analysis
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",

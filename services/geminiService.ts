@@ -773,36 +773,34 @@ ${CENTRAL_METAPHOR_INSTRUCTIONS}
 
 export const generateSongAssets = async (inputs: SongInputs, onProgress?: (stage: string, detail?: string) => void): Promise<GeneratedSong> => {
   try {
-    // NEW: Real multi-agent system (if any logic mode enabled)
-    if (inputs.advancedLyricLogic || inputs.centralMetaphorLogic || inputs.commercialMode) {
-      console.log('🎭 Using REAL multi-agent generation system...');
-      const { generateSongWithRealAgents } = await import('./realAgentSystem');
-      const { song } = await generateSongWithRealAgents(inputs, SYSTEM_INSTRUCTION, SONG_SCHEMA, onProgress);
-      
-      // Generate cover art
-      if (song.coverArtPrompt) {
-        try {
-          const imageResponse = await ai.models.generateImages({
-            model: 'imagen-3.0-fast-generate-001',
-            prompt: song.coverArtPrompt,
-            config: {
-              numberOfImages: 1,
-              outputMimeType: 'image/jpeg',
-              aspectRatio: '1:1',
-            },
-          });
-          if (imageResponse.generatedImages?.[0]?.image?.imageBytes) {
-            song.coverImageBase64 = imageResponse.generatedImages[0].image.imageBytes;
-          }
-        } catch (imgError) {
-          console.warn("Image generation failed:", imgError);
+    // ALWAYS USE: Real multi-agent generation system
+    console.log('🎭 Using REAL multi-agent generation system...');
+    const { generateSongWithRealAgents } = await import('./realAgentSystem');
+    const { song } = await generateSongWithRealAgents(inputs, SYSTEM_INSTRUCTION, SONG_SCHEMA, onProgress);
+    
+    // Generate cover art
+    if (song.coverArtPrompt) {
+      try {
+        const imageResponse = await ai.models.generateImages({
+          model: 'imagen-3.0-fast-generate-001',
+          prompt: song.coverArtPrompt,
+          config: {
+            numberOfImages: 1,
+            outputMimeType: 'image/jpeg',
+            aspectRatio: '1:1',
+          },
+        });
+        if (imageResponse.generatedImages?.[0]?.image?.imageBytes) {
+          song.coverImageBase64 = imageResponse.generatedImages[0].image.imageBytes;
         }
+      } catch (imgError) {
+        console.warn("Image generation failed:", imgError);
       }
-      
-      return song;
     }
     
-    // LEGACY: Standard single-shot generation (no logic modes)
+    return song;
+    
+    /* LEGACY CODE REMOVED - Always use real agent system now
     const instrumentString = inputs.instruments.length > 0 ? `Featured Instruments: ${inputs.instruments.join(', ')}.` : "";
     
     const prompt = `
