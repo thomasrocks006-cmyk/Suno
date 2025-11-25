@@ -103,8 +103,16 @@ export default function App() {
     setError(null);
 
     try {
-      // 1. Generate the Base Song
-      const newSong = await generateSongAssets(inputs);
+      // 1. Generate the Base Song with real-time progress
+      const newSong = await generateSongAssets(inputs, (stage, detail) => {
+        const stageLabels: Record<string, string> = {
+          'draft': '📝 Creating Initial Draft',
+          'critique': '🎭 Agents Reviewing',
+          'refine': '⚖️ Judge Synthesizing',
+          'complete': '✅ Refinement Complete'
+        };
+        setLoadingStatus(detail || stageLabels[stage] || 'Architecting Song...');
+      });
       
       // IMMEDIATE UPDATE: Show the song to the user now
       setHistory(prev => [newSong, ...prev]);
