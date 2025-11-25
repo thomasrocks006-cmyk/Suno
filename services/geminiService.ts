@@ -799,8 +799,14 @@ export const generateSongAssets = async (inputs: SongInputs, onProgress?: (stage
     }
     
     return song;
-    
-    /* LEGACY CODE REMOVED - Always use real agent system now
+  } catch (err) {
+    console.error('Song generation failed:', err);
+    throw err;
+  }
+};
+
+/* LEGACY CODE REMOVED - Always use real agent system now
+const __legacySingleShotGeneration = async (inputs: SongInputs) => {
     const instrumentString = inputs.instruments.length > 0 ? `Featured Instruments: ${inputs.instruments.join(', ')}.` : "";
     
     const prompt = `
@@ -887,6 +893,7 @@ export const generateSongAssets = async (inputs: SongInputs, onProgress?: (stage
     throw error;
   }
 };
+*/
 
 // Internal implementation without caching
 const analyzeSongConceptInternal = async (inputs: SongInputs): Promise<AnalysisResponse> => {
