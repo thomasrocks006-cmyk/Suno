@@ -20,5 +20,9 @@ dist-ssr
 *.suo
 .env
 
+# Backup files
+*.bak
+*.backup
+
 # Repository indexing
 .repo-index
