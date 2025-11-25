@@ -1652,7 +1652,7 @@ export const chatWithAnalysisAgent = async (
   userMessage: string,
   chatHistory: ChatMessage[],
   highlightedText?: string,
-  context?: 'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'general'
+  context?: 'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'general' | 'lineByLine'
 ): Promise<string> => {
   if (!song.analysis) throw new Error("Analysis required for chat");
 

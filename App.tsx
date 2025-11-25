@@ -585,7 +585,7 @@ export default function App() {
             onClose={() => setShowDebateModal(false)}
             song={debateSong}
             debates={debateSong.agentDebates || []}
-            consensusItems={debateSong.analysis?.consensusStrengths || []}
+            consensusItems={debateSong.analysis?.strengths || []}
             onComplete={() => {
               setShowDebateModal(false);
             }}

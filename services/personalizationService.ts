@@ -3,18 +3,23 @@
 
 export interface MetaphorSuggestion {
   metaphor: string;
-  type: string;
+  type: 'visual' | 'spatial' | 'symbolic' | 'auditory' | 'natural' | 'custom';
   explanation: string;
+  description?: string;
+  bestFit?: string;
 }
 
 export interface PowerLineSuggestion {
   text: string;
   syllableCount: number;
   suggestedPlacement: string[];
+  explanation?: string;
 }
 
 export interface LocationContext {
   city: string;
+  country: string;
+  neighborhood?: string;
   landmarks: string[];
   culturalNotes: string[];
 }
@@ -35,7 +40,7 @@ export const generatePowerLines = async (
 };
 
 export const extractLocationContext = async (location: string): Promise<LocationContext> => {
-  return { city: '', landmarks: [], culturalNotes: [] };
+  return { city: '', country: '', landmarks: [], culturalNotes: [] };
 };
 
 export const extractMemoryElements = async (memory: string): Promise<any> => {

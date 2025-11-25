@@ -238,8 +238,8 @@ export const PolishedLyricsEditor: React.FC<PolishedLyricsEditorProps> = ({
       if (critique && critique.highlights.length > 0) {
         const firstQuickFix = critique.highlights[0].quickFixes?.[0];
         if (firstQuickFix) {
-          lines[lineNumber - 1] = firstQuickFix.suggestedText;
-          changedCount++;
+          lines[lineNumber - 1] = firstQuickFix.newText;
+          changedCount++;;
         }
       }
     });
@@ -518,7 +518,7 @@ export const PolishedLyricsEditor: React.FC<PolishedLyricsEditorProps> = ({
                         <div className="mt-2 space-y-2 text-xs" role="region" aria-label="Suggestions">
                           {critique.highlights.map((highlight, idx) => (
                             <div key={idx} className="bg-black/40 p-2 rounded border-l-2 border-yellow-500">
-                              <div className="text-gray-300 mb-1">{highlight.reason}</div>
+                              <div className="text-gray-300 mb-1">{highlight.message}</div>
                               {highlight.quickFixes && highlight.quickFixes.length > 0 && (
                                 <div className="space-y-1">
                                   {highlight.quickFixes.map((fix, fixIdx) => (
@@ -526,14 +526,14 @@ export const PolishedLyricsEditor: React.FC<PolishedLyricsEditorProps> = ({
                                       key={fixIdx}
                                       onClick={() => {
                                         const lines = lyrics.split('\n');
-                                        lines[lineNumber - 1] = fix.suggestedText;
+                                        lines[lineNumber - 1] = fix.newText;
                                         const newLyrics = lines.join('\n');
                                         saveEdit(newLyrics, `Applied quick fix to line ${lineNumber}`);
                                       }}
                                       className="block w-full text-left px-2 py-1 bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 transition"
                                       aria-label={`Apply suggestion: ${fix.explanation}`}
                                     >
-                                      💡 {fix.explanation}: "{fix.suggestedText}"
+                                      {'💡'} {fix.explanation}: "{fix.newText}"
                                     </button>
                                   ))}
                                 </div>
@@ -629,7 +629,7 @@ export const PolishedLyricsEditor: React.FC<PolishedLyricsEditorProps> = ({
                   
                   {critique.highlights[0] && (
                     <div className="text-[10px] text-gray-400">
-                      {critique.highlights[0].reason.slice(0, 80)}...
+                      {critique.highlights[0].message.slice(0, 80)}...
                     </div>
                   )}
                 </button>

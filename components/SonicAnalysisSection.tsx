@@ -48,7 +48,7 @@ export const SonicAnalysisSection: React.FC<SonicAnalysisSectionProps> = ({
             <h5 className="text-xs md:text-sm font-bold text-white">Sonic & Structural Analysis (Producer's Ear)</h5>
           </div>
           <button 
-            onClick={() => onTextHighlight(song.analysis?.sonicTexture?.issuesFound.join(', ') || '')}
+            onClick={() => onTextHighlight(song.analysis?.sonicAnalysis?.phonetics || '')}
             className="text-[10px] bg-purple-500/20 hover:bg-purple-500/40 text-purple-300 px-2 py-1 rounded transition"
           >
             Discuss with Agent
@@ -127,7 +127,7 @@ export const SonicAnalysisSection: React.FC<SonicAnalysisSectionProps> = ({
               </div>
             </div>
             <button 
-              onClick={() => onTextHighlight(song.analysis?.dnaMatch?.matchedSong || '')}
+              onClick={() => onTextHighlight(song.analysis?.dnaMatch?.referenceSong || '')}
               className="text-[10px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-2 py-1 rounded transition whitespace-nowrap"
             >
               Discuss with Agent

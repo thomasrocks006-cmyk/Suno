@@ -235,10 +235,10 @@ const AgentCoverageDisplay: React.FC<{ coverageReport: AgentCoverageReport }> = 
       <div className="bg-black/30 rounded p-3 border border-cyan-500/20">
         <div className="text-xs font-bold text-cyan-400 mb-2">Agent Participation</div>
         <div className="space-y-1 text-xs">
-          {Object.entries(coverageReport.agentParticipation).map(([agent, lines]) => (
+          {Object.entries(coverageReport.agentParticipation).map(([agent, data]) => (
             <div key={agent} className="flex justify-between">
               <span className="text-gray-300">{agent}:</span>
-              <span className="text-white font-medium">{lines}</span>
+              <span className="text-white font-medium">{data.linesReviewed} lines ({data.percentage}%)</span>
             </div>
           ))}
         </div>
@@ -269,7 +269,7 @@ const AgentCoverageDisplay: React.FC<{ coverageReport: AgentCoverageReport }> = 
           <div className="space-y-1 text-xs max-h-24 overflow-y-auto">
             {coverageReport.debateHotspots.slice(0, 3).map((item, i) => (
               <div key={i} className="text-gray-300 text-[10px]">
-                L{item.lineNumber}: {item.agentCount} agents
+                L{item.lineNumber}: {item.disagreementLevel}
               </div>
             ))}
           </div>

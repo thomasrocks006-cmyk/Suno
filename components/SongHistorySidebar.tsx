@@ -40,7 +40,7 @@ export const SongHistorySidebar: React.FC<SongHistorySidebarProps> = ({
           </div>
         ) : (
           history.map((song) => {
-            const coverSrc = song.imageUrl || (song.coverImageBase64 ? (song.coverImageBase64.startsWith('data:') ? song.coverImageBase64 : `data:image/jpeg;base64,${song.coverImageBase64}`) : null);
+            const coverSrc = song.coverImageBase64 ? (song.coverImageBase64.startsWith('data:') ? song.coverImageBase64 : `data:image/jpeg;base64,${song.coverImageBase64}`) : null;
             
             return (
             <div 

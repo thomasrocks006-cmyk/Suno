@@ -46,7 +46,7 @@ export const MiniPlayer: React.FC = () => {
         </div>
         <div className="min-w-0">
           <h4 className="text-sm font-bold text-white truncate">{currentSong.title}</h4>
-          <p className="text-xs text-gray-400 truncate">{currentSong.stylePrompt || currentSong.style}</p>
+          <p className="text-xs text-gray-400 truncate">{currentSong.stylePrompt}</p>
         </div>
       </div>
 

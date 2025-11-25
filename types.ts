@@ -227,7 +227,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   highlightedText?: string; // If user highlighted part of the song
-  context?: 'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'general'; // What section they're discussing
+  context?: 'score' | 'lyrics' | 'sonic' | 'dnaMatch' | 'general' | 'lineByLine'; // What section they're discussing
 }
 
 export interface RewritePlanProposal {

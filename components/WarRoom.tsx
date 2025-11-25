@@ -55,13 +55,17 @@ export interface ExecutionPlan {
 
 interface WarRoomProps {
   plan: ExecutionPlan;
-  rhymePairs: Array<[number, number]>;
-  onApprove: (changeId: string) => void;
-  onVeto: (changeId: string) => void;
-  onModify: (changeId: string, newText: string) => void;
-  onAddManualInstruction: (instruction: string) => void;
-  onExecute: (approvedChanges: ExecutionPlanChange[]) => void;
-  onReconsider: (changeId: string) => void;
+  rhymePairs?: Array<[number, number]>;
+  onApprove?: (changeId: string) => void;
+  onVeto?: (changeId: string) => void;
+  onModify?: (changeId: string, newText: string) => void;
+  onAddManualInstruction?: (instruction: string) => void;
+  onExecute?: (approvedChanges: ExecutionPlanChange[]) => void;
+  onReconsider?: (changeId: string) => void;
+  // Simplified props for App.tsx compatibility
+  songTitle?: string;
+  originalLyrics?: string;
+  onCancel?: () => void;
 }
 
 // ============================================================
@@ -70,13 +74,16 @@ interface WarRoomProps {
 
 export const WarRoom: React.FC<WarRoomProps> = ({
   plan,
-  rhymePairs,
-  onApprove,
-  onVeto,
-  onModify,
-  onAddManualInstruction,
-  onExecute,
-  onReconsider
+  rhymePairs = [],
+  onApprove = () => {},
+  onVeto = () => {},
+  onModify = () => {},
+  onAddManualInstruction = () => {},
+  onExecute = () => {},
+  onReconsider = () => {},
+  songTitle: _songTitle,
+  originalLyrics: _originalLyrics,
+  onCancel: _onCancel
 }) => {
   const [manualInput, setManualInput] = useState('');
   const [expandedChange, setExpandedChange] = useState<string | null>(null);

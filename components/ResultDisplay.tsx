@@ -124,8 +124,8 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
   const handleAnalyze = async () => {
     if (song.analysis) return;
     try {
-      const analysis = await analyzeGeneratedSong(song, parentSong?.lyrics); 
-      onUpdateSong({ ...song, analysis });
+      const result = await analyzeGeneratedSong(song, parentSong?.lyrics); 
+      onUpdateSong({ ...song, analysis: result.analysis, agentDebates: result.agentDebates });
     } catch (e) {
       console.error(e);
     }

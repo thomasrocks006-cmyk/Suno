@@ -69,8 +69,8 @@ export const DeepAnalysisAssistant: React.FC<DeepAnalysisAssistantProps> = ({
       })
       .join('\n');
 
-    const songDNA = (analysis.songDNA || [])
-      .map((dna: any) => `${dna.attribute} (${dna.confidence}/10): ${dna.reasoning}`)
+    const songDNA = (analysis.dnaMatch ? [analysis.dnaMatch] : [])
+      .map((dna: any) => `${dna.referenceSong} by ${dna.artist} (${dna.matchScore}% match)`)
       .join('\n');
 
     return `
