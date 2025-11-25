@@ -22,3 +22,7 @@ dist-ssr
 
 # Repository indexing
 .repo-index
+
+# Backup files
+*.bak
+*.backup
