@@ -119,7 +119,7 @@ export const CostDashboard: React.FC<CostDashboardProps> = ({ onClose }) => {
                   <div>
                     <div className="text-gray-400">Total Operations</div>
                     <div className="text-2xl font-bold text-white mt-1">
-                      {Object.values(summary.operationCounts).reduce((a, b) => a + b, 0)}
+                      {Object.values(summary.operationCounts).reduce((a: number, b: number) => a + b, 0)}
                     </div>
                   </div>
                   <div>
@@ -216,10 +216,10 @@ export const CostDashboard: React.FC<CostDashboardProps> = ({ onClose }) => {
                 <h3 className="text-lg font-bold text-white mb-4">Cost by Operation</h3>
                 <div className="space-y-3">
                   {Object.entries(summary.operationCosts)
-                    .sort((a, b) => b[1] - a[1])
+                    .sort((a, b) => (b[1] as number) - (a[1] as number))
                     .map(([operation, cost]) => {
                       const count = summary.operationCounts[operation];
-                      const percentage = (cost / summary.totalCost) * 100;
+                      const percentage = ((cost as number) / summary.totalCost) * 100;
                       
                       return (
                         <div key={operation} className="space-y-1">
@@ -228,7 +228,7 @@ export const CostDashboard: React.FC<CostDashboardProps> = ({ onClose }) => {
                               {operation.replace('_', ' ')} ({count}x)
                             </span>
                             <span className="text-white font-semibold">
-                              ${cost.toFixed(4)} ({percentage.toFixed(1)}%)
+                              ${(cost as number).toFixed(4)} ({percentage.toFixed(1)}%)
                             </span>
                           </div>
                           <div className="h-2 bg-white/10 rounded-full overflow-hidden">

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { generateSongAssets, analyzeGeneratedSong, generateSongVariations } from './services/geminiService';
+import { generateSongAssets, generateSongVariations } from './services/geminiService';
+import { runV5AnalysisPipeline, generateExecutionPlan, executeApprovedRewrite, V5AnalysisResult } from './services/v5AnalysisPipeline';
+import { DebateTurn } from './services/realDebateEngine';
 import { InputForm } from './components/InputForm';
 import { ResultDisplay } from './components/ResultDisplay';
 import { Sidebar } from './components/Sidebar';
@@ -7,8 +9,9 @@ import { MiniPlayer } from './components/MiniPlayer';
 import { FullPlayerView } from './components/FullPlayerView';
 import { SkeletonLoader } from './components/SkeletonLoader';
 import AgentDebateModal from './components/AgentDebateModal';
+import { WarRoom } from './components/WarRoom';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SongInputs, GeneratedSong, StructureType } from './types';
+import { SongInputs, GeneratedSong, StructureType, V5AnalysisState, V5DebateTurn, V5ExecutionPlan, AgentDebate } from './types';
 
 // Lazy load heavy modal components for better initial bundle size
 const ValidationDashboard = lazy(() => import('./components/ValidationDashboard').then(m => ({ default: m.ValidationDashboard })));
@@ -49,6 +52,19 @@ export default function App() {
   // Agent Debate Modal state
   const [showDebateModal, setShowDebateModal] = useState(false);
   const [debateSong, setDebateSong] = useState<GeneratedSong | null>(null);
+  
+  // V5 Analysis State
+  const [v5State, setV5State] = useState<V5AnalysisState>({
+    phase: 'idle',
+    progress: 0,
+    statusMessage: '',
+    debateTurns: []
+  });
+  
+  // War Room State
+  const [showWarRoom, setShowWarRoom] = useState(false);
+  const [warRoomPlan, setWarRoomPlan] = useState<V5ExecutionPlan | null>(null);
+  const [warRoomSong, setWarRoomSong] = useState<GeneratedSong | null>(null);
   
   // Ref to track current song ID for race condition fix (BUG-001)
   const currentSongIdRef = React.useRef<string | null>(null);
@@ -106,60 +122,219 @@ export default function App() {
     }
   };
 
-  // Helper to run analysis and update state when done
+  // Helper to run V5 analysis pipeline and update state
   const triggerBackgroundAnalysis = async (songToAnalyze: GeneratedSong) => {
-    // Store the song ID we're analyzing
     const analyzingSongId = songToAnalyze.id;
     
-    // Don't show modal immediately - wait for first debate data (BUG-002 fix)
-    // Modal will be shown when we have actual debate data
+    // Initialize v5 state
+    setV5State({
+      phase: 'structural-scan',
+      progress: 0,
+      statusMessage: 'Starting structural scan...',
+      debateTurns: []
+    });
+    
+    // Show debate modal immediately for real-time updates
+    setDebateSong(songToAnalyze);
+    setShowDebateModal(true);
     
     try {
-      // Check if this is a V2/Revision and find parent for comparison
-      let parentLyrics: string | undefined;
-      
-      if (songToAnalyze.parentId) {
-          const parent = history.find(h => h.id === songToAnalyze.parentId);
-          if (parent) parentLyrics = parent.lyrics;
-      }
-
-      // Run analysis with live progress updates
-      const result = await analyzeGeneratedSong(
-        songToAnalyze, 
-        parentLyrics,
-        (stage, agent) => {
-          // Update modal in real-time as agents complete
-          console.log(`Progress: ${stage} ${agent || ''}`);
-          // Modal will re-render as debateSong updates
+      // Run v5 analysis pipeline with progress callbacks
+      const result = await runV5AnalysisPipeline(
+        songToAnalyze,
+        // Progress callback
+        (phase, progress, detail) => {
+          setV5State(prev => ({
+            ...prev,
+            phase: phase as V5AnalysisState['phase'],
+            progress,
+            statusMessage: detail || `${phase} (${progress}%)`
+          }));
+        },
+        // Real-time debate turn callback
+        (turn: DebateTurn) => {
+          const v5Turn: V5DebateTurn = {
+            agent: turn.agent,
+            statement: turn.statement,
+            type: turn.type,
+            timestamp: turn.timestamp || Date.now(),
+            citedLines: turn.citedLines
+          };
+          setV5State(prev => ({
+            ...prev,
+            debateTurns: [...prev.debateTurns, v5Turn]
+          }));
         }
       );
       
-      // Update the song in history and current view (with analysis AND debates)
-      const updatedSong = { 
-        ...songToAnalyze, 
-        analysis: result.analysis,
-        agentDebates: result.agentDebates 
+      // Convert v5 result to legacy format for compatibility
+      const legacyAnalysis = convertV5ToLegacyAnalysis(result);
+      const legacyDebates = convertV5ToLegacyDebates(result);
+      
+      // Update the song with both v5 and legacy data
+      const updatedSong: GeneratedSong = {
+        ...songToAnalyze,
+        analysis: legacyAnalysis,
+        agentDebates: legacyDebates,
+        v5Analysis: result as any // Store full v5 result
       };
       
       setHistory(prev => prev.map(s => s.id === songToAnalyze.id ? updatedSong : s));
       
-      // Only update currentSong if the user is still looking at it (BUG-001 fix)
-      // Use ref to avoid stale closure
+      // Only update currentSong if user is still viewing it
       if (currentSongIdRef.current === analyzingSongId) {
         setCurrentSong(updatedSong);
-        
-        // Show modal with debate data if debates exist
-        if (result.agentDebates && result.agentDebates.length > 0) {
-          setDebateSong(updatedSong);
-          setShowDebateModal(true);
-        }
+        setDebateSong(updatedSong);
       }
       
+      // Update v5 state to complete
+      setV5State(prev => ({
+        ...prev,
+        phase: 'complete',
+        progress: 100,
+        statusMessage: 'Analysis complete!',
+        result: result as any
+      }));
+      
     } catch (analysisError) {
-      console.error("Background analysis failed:", analysisError);
-      // Show error to user (ISSUE-002 fix)
+      console.error("V5 analysis failed:", analysisError);
+      setV5State(prev => ({
+        ...prev,
+        phase: 'error',
+        statusMessage: 'Analysis failed',
+        error: String(analysisError)
+      }));
       setError("Analysis failed. Some features may be unavailable.");
-      setShowDebateModal(false); // Close modal on error
+      setShowDebateModal(false);
+    }
+  };
+  
+  // Convert V5 analysis to legacy SongAnalysis format for backward compatibility
+  const convertV5ToLegacyAnalysis = (result: V5AnalysisResult) => {
+    const deepAnalysis = result.deepAnalysis;
+    return {
+      overallScore: deepAnalysis.overallScore,
+      projectedScore: deepAnalysis.projectedScore,
+      summary: deepAnalysis.executiveSummary,
+      scoreBreakdown: deepAnalysis.scoreBreakdown.map(s => ({
+        category: s.category as any,
+        score: s.score,
+        reason: s.reasoning
+      })),
+      themeAnalysis: deepAnalysis.storyArcAnalysis.structure,
+      storyArc: deepAnalysis.storyArcAnalysis.narrativeType,
+      sonicAnalysis: {
+        phonetics: deepAnalysis.phoneticAnalysis?.vowelFlowScore?.toString() || 'N/A',
+        density: deepAnalysis.imageryAudit.abstractVsConcreteRatio.toString(),
+        cinemaAudit: {
+          score: deepAnalysis.imageryAudit.cinemaScore >= 8 ? 'A' : deepAnalysis.imageryAudit.cinemaScore >= 6 ? 'B' : 'C',
+          objectCount: deepAnalysis.imageryAudit.concreteObjects.length,
+          objects: deepAnalysis.imageryAudit.concreteObjects,
+          analysis: deepAnalysis.imageryAudit.metaphorSystems.join(', ')
+        }
+      },
+      strengths: deepAnalysis.topPriorities,
+      weaknesses: deepAnalysis.quickWins,
+      lineByLineImprovements: deepAnalysis.lineByLineImprovements.map(imp => ({
+        original: imp.original,
+        improved: imp.suggestion,
+        reason: imp.rationale
+      })),
+      commercialViability: deepAnalysis.scoreBreakdown.find(s => s.category === 'Commercial Potential')?.reasoning || 'N/A',
+      consensusStrengths: deepAnalysis.topPriorities
+    };
+  };
+  
+  // Convert V5 debate transcript to legacy AgentDebate format
+  const convertV5ToLegacyDebates = (result: V5AnalysisResult): AgentDebate[] => {
+    const debates = result.debateTranscript.topics || [];
+    return debates.map((topic: any) => ({
+      issue: topic.topic,
+      votes: topic.turns?.slice(0, 5).map((turn: any) => ({
+        agent: turn.agent,
+        position: (turn.type === 'agreement' ? 'SUPPORT' : turn.type === 'counter' ? 'OPPOSE' : 'COMPROMISE') as 'SUPPORT' | 'OPPOSE' | 'COMPROMISE',
+        reasoning: turn.statement
+      })) || [],
+      resolution: {
+        decision: (topic.outcome === 'consensus' ? 'KEEP' : 'COMPROMISE') as 'KEEP' | 'CHANGE' | 'COMPROMISE',
+        rationale: topic.keyAgreements?.join('; ') || 'No resolution'
+      }
+    }));
+  };
+  
+  // Handler for War Room approval
+  const handleWarRoomApprove = async (approvedPlan: V5ExecutionPlan) => {
+    if (!warRoomSong) return;
+    
+    setShowWarRoom(false);
+    setLoadingStatus('Executing rewrite...');
+    
+    try {
+      const rewriteResult = await executeApprovedRewrite(
+        warRoomSong.lyrics,
+        approvedPlan as any,
+        warRoomSong.v5Analysis?.structuralScan,
+        warRoomSong.v5Analysis?.judgeSummary,
+        (phase, progress, detail) => {
+          setLoadingStatus(`${phase}: ${detail || progress + '%'}`);
+        }
+      );
+      
+      // Create new version with rewritten lyrics
+      const newVersion: GeneratedSong = {
+        ...warRoomSong,
+        id: crypto.randomUUID(),
+        parentId: warRoomSong.id,
+        title: warRoomSong.title.replace(/\s\(V\d+\)/, '') + ` (V${getVersionNumber(warRoomSong) + 1})`,
+        createdAt: Date.now(),
+        lyrics: rewriteResult.rewriteResult.rewrittenLyrics,
+        v5ExecutionPlan: approvedPlan,
+        v5RewriteResult: rewriteResult.rewriteResult as any,
+        v5AuditReport: rewriteResult.auditReport as any,
+        analysis: undefined // Clear old analysis
+      };
+      
+      setHistory(prev => [newVersion, ...prev]);
+      setCurrentSong(newVersion);
+      
+      // Trigger analysis on the new version
+      triggerBackgroundAnalysis(newVersion);
+      
+    } catch (error) {
+      console.error('Rewrite failed:', error);
+      setError('Rewrite failed. Please try again.');
+    } finally {
+      setLoadingStatus(null);
+      setWarRoomPlan(null);
+      setWarRoomSong(null);
+    }
+  };
+  
+  // Helper to get version number from title
+  const getVersionNumber = (song: GeneratedSong): number => {
+    const match = song.title.match(/\(V(\d+)\)/);
+    return match ? parseInt(match[1]) : 1;
+  };
+  
+  // Handler to open War Room with execution plan
+  const handleOpenWarRoom = async (song: GeneratedSong) => {
+    if (!song.v5Analysis) {
+      setError('No analysis available. Please wait for analysis to complete.');
+      return;
+    }
+    
+    setLoadingStatus('Generating execution plan...');
+    
+    try {
+      const plan = await generateExecutionPlan(song.v5Analysis as any, song);
+      setWarRoomPlan(plan as any);
+      setWarRoomSong(song);
+      setShowWarRoom(true);
+    } catch (error) {
+      console.error('Plan generation failed:', error);
+      setError('Failed to generate execution plan.');
+    } finally {
+      setLoadingStatus(null);
     }
   };
 
@@ -413,7 +588,40 @@ export default function App() {
             consensusItems={debateSong.analysis?.consensusStrengths || []}
             onComplete={() => {
               setShowDebateModal(false);
-              // Analysis is already complete, just close modal
+            }}
+            // V5 props for real-time streaming
+            v5State={v5State}
+            onOpenWarRoom={() => handleOpenWarRoom(debateSong)}
+          />
+        </ErrorBoundary>
+      )}
+      
+      {/* War Room Modal - For approving execution plan */}
+      {showWarRoom && warRoomPlan && warRoomSong && (
+        <ErrorBoundary fallback={
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6 max-w-md text-center">
+              <span className="text-5xl mb-4 block">⚠️</span>
+              <h3 className="text-xl font-bold text-white mb-2">War Room Error</h3>
+              <p className="text-gray-300 mb-4">Failed to load the execution plan</p>
+              <button
+                onClick={() => setShowWarRoom(false)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        }>
+          <WarRoom
+            plan={warRoomPlan as any}
+            songTitle={warRoomSong.title}
+            originalLyrics={warRoomSong.lyrics}
+            onApprove={handleWarRoomApprove as any}
+            onCancel={() => {
+              setShowWarRoom(false);
+              setWarRoomPlan(null);
+              setWarRoomSong(null);
             }}
           />
         </ErrorBoundary>

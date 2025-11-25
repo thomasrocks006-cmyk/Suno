@@ -321,6 +321,12 @@ export interface GeneratedSong {
   streamAudioUrl?: string;
   audioStatus?: 'PENDING' | 'TEXT_SUBMITTING' | 'TEXT_SUCCESS' | 'GENERATING' | 'SUCCESS' | 'FAILED';
   actualModel?: string; // The actual model version used by Suno API
+  
+  // V5 Architecture Fields
+  v5Analysis?: V5AnalysisResult; // Full v5 analysis result
+  v5ExecutionPlan?: V5ExecutionPlan; // Approved execution plan
+  v5RewriteResult?: V5RewriteResult; // Result of two-pass rewrite
+  v5AuditReport?: V5AuditReport; // Auditor validation result
 }
 
 export interface AgentDebate {
@@ -344,6 +350,179 @@ export interface SunoTip {
   title: string;
   content: string;
   category: 'structure' | 'style' | 'meta';
+}
+
+// ============================================================
+// V5 ARCHITECTURE TYPES
+// ============================================================
+
+export interface V5AnalysisState {
+  /** Current phase of the v5 pipeline */
+  phase: 'idle' | 'structural-scan' | 'debate' | 'judge' | 'analyst' | 'complete' | 'error';
+  /** Progress percentage (0-100) */
+  progress: number;
+  /** Detailed status message */
+  statusMessage: string;
+  /** Real-time debate turns (for streaming UI) */
+  debateTurns: V5DebateTurn[];
+  /** Result from the pipeline */
+  result?: V5AnalysisResult;
+  /** Error message if failed */
+  error?: string;
+}
+
+export interface V5DebateTurn {
+  agent: string;
+  statement: string;
+  type: 'observation' | 'challenge' | 'proposal' | 'counter' | 'agreement' | 'question';
+  timestamp: number;
+  citedLines?: number[];
+}
+
+export interface V5AnalysisResult {
+  structuralScan: any; // StructuralScanResult
+  debateTranscript: any; // DebateTranscript
+  judgeSummary: any; // JudgeSummary
+  deepAnalysis: V5DeepAnalysisReport;
+  timing: {
+    structuralScanMs: number;
+    debateMs: number;
+    judgeMs: number;
+    analystMs: number;
+    totalMs: number;
+  };
+  status: 'complete' | 'partial' | 'failed';
+  errors: string[];
+}
+
+export interface V5DeepAnalysisReport {
+  scoreBreakdown: V5ScoreBreakdown[];
+  overallScore: number;
+  projectedScore: number;
+  storyArcAnalysis: V5StoryArcAnalysis;
+  imageryAudit: V5ImageryAudit;
+  lineByLineImprovements: V5LineImprovement[];
+  dnaMatchInsights: any;
+  phoneticAnalysis: any;
+  executiveSummary: string;
+  topPriorities: string[];
+  quickWins: string[];
+  analysisTime: number;
+  modelUsed: string;
+  timestamp: number;
+}
+
+export interface V5ScoreBreakdown {
+  category: string;
+  score: number;
+  maxScore: number;
+  justification: string;
+  improvementPotential: number;
+  specificIssues: string[];
+  benchmarkComparison?: string;
+}
+
+export interface V5StoryArcAnalysis {
+  structure: string;
+  emotionalJourney: { section: string; emotion: string; intensity: number }[];
+  tensionPoints: number[];
+  climaxLine: number;
+  resolutionLine: number;
+  characterConsistency: number;
+  narrativeType: string;
+}
+
+export interface V5ImageryAudit {
+  concreteObjects: string[];
+  sensoryDetails: { visual: string[]; auditory: string[]; tactile: string[]; olfactory: string[]; gustatory: string[] };
+  abstractVsConcreteRatio: number;
+  cinemaScore: number;
+  metaphorSystems: string[];
+  clicheCount: number;
+  originalMetaphors: string[];
+}
+
+export interface V5LineImprovement {
+  lineNumber: number;
+  original: string;
+  suggestion: string;
+  category: string;
+  priority: 'high' | 'medium' | 'low';
+  rationale: string;
+  sourceAgent?: string;
+}
+
+export interface V5ExecutionPlan {
+  planId: string;
+  songTitle: string;
+  createdAt: number;
+  status: 'draft' | 'approved' | 'executing' | 'complete';
+  currentScore: number;
+  targetScore: number;
+  prioritizedChanges: V5PrioritizedChange[];
+  lineLevelChanges: V5LineLevelChange[];
+  rhymeDependencies: { group: number[]; pattern: string; constraint: string }[];
+  fewShotExamples: { before: string; after: string; style: string; category: string }[];
+  conflicts: { description: string; judgePosition: string; analystPosition: string; resolution: string }[];
+  executiveSummary: string;
+  estimatedRewriteTime: number;
+}
+
+export interface V5PrioritizedChange {
+  priority: number;
+  changeId: string;
+  description: string;
+  source: 'judge-mandate' | 'analyst-recommendation' | 'dna-insight' | 'user-instruction';
+  affectedLines: number[];
+  dependencyGroup: number[];
+  expectedImpact: { category: string; pointsGain: number };
+  confidence: 'high' | 'medium' | 'low';
+  /** User approval status in War Room */
+  userApproval?: 'approved' | 'vetoed' | 'modified' | 'pending';
+}
+
+export interface V5LineLevelChange {
+  lineNumber: number;
+  sectionType: string;
+  original: string;
+  proposed: string;
+  rationale: string;
+  sourceAnalysis: string;
+  rhymeConstraint?: string;
+  syllableTarget?: number;
+  mustPreserve?: string[];
+}
+
+export interface V5RewriteResult {
+  rewrittenLyrics: string;
+  changesApplied: { lineNumber: number; originalText: string; newText: string; changeType: string; confidenceScore: number }[];
+  failedChanges: { lineNumber: number; originalText: string; reason: string }[];
+  decoratorAdditions: { lineNumber: number; type: string; insertion: string; position: string }[];
+  metrics: {
+    totalLinesChanged: number;
+    totalLinesAttempted: number;
+    successRate: number;
+    averageConfidence: number;
+    syllableDrift: number;
+    decorationsAdded: number;
+  };
+}
+
+export interface V5AuditReport {
+  overallStatus: 'pass' | 'fail' | 'warning';
+  badges: V5ValidationBadge[];
+  summary: { criticalCount: number; warningCount: number; passCount: number };
+  recommendation: string;
+}
+
+export interface V5ValidationBadge {
+  id: string;
+  category: 'rhyme' | 'syllable' | 'mandate' | 'structure' | 'sensory';
+  severity: 'critical' | 'warning' | 'pass' | 'info';
+  message: string;
+  affectedLines: number[];
+  details: string;
+  suggestedAction?: string;
 }
 
 export interface FeedbackItem {

@@ -1,8 +1,8 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react';
+import * as React from 'react';
 
 interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
 }
 
 interface State {
@@ -10,17 +10,14 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+export class ErrorBoundary extends React.Component<Props, State> {
+  state: State = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
   }
 
@@ -33,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex items-center justify-center min-h-[200px] p-8">
           <div className="text-center max-w-md">
-            <div className="text-6xl mb-4">⚠️</div>
+            <div className="text-6xl mb-4">{'\u26A0\uFE0F'}</div>
             <h2 className="text-xl font-semibold text-white mb-2">Something went wrong</h2>
             <p className="text-gray-400 mb-4">
               {this.state.error?.message || 'An unexpected error occurred'}

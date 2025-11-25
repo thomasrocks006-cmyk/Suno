@@ -426,6 +426,7 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({ song, parentSong, 
             isGeneratingPlan={isGeneratingPlan}
             isFetchingDNALyrics={isFetchingDNALyrics}
             dnaLyricsError={dnaLyricsError}
+            v5Analysis={song.v5Analysis}
             onExpandScoreItem={setExpandedScoreItem}
             onToggleAdvancedLogic={() => setUseAdvancedLogic(!useAdvancedLogic)}
             onToggleMetaphorLogic={() => setUseMetaphorLogic(!useMetaphorLogic)}

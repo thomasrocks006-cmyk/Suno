@@ -18,7 +18,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { GeneratedSong, AgentDebate } from '../types';
+import { GeneratedSong, AgentDebate, V5AnalysisState, V5DebateTurn } from '../types';
 
 interface AgentDebateModalProps {
   isOpen: boolean;
@@ -27,6 +27,9 @@ interface AgentDebateModalProps {
   debates: AgentDebate[];
   consensusItems: string[];
   onComplete: () => void;
+  // V5 Architecture props
+  v5State?: V5AnalysisState;
+  onOpenWarRoom?: () => void;
 }
 
 export function AgentDebateModal({
@@ -35,11 +38,17 @@ export function AgentDebateModal({
   song,
   debates,
   consensusItems,
-  onComplete
+  onComplete,
+  v5State,
+  onOpenWarRoom
 }: AgentDebateModalProps) {
+  // V5 mode detection
+  const isV5Mode = !!v5State;
+  
   // Determine current stage based on available data
   const hasAnalysis = !!song.analysis;
   const hasDebates = debates.length > 0;
+  const hasV5Debates = v5State && v5State.debateTurns.length > 0;
   
   const [stage, setStage] = useState<'analyzing' | 'debating' | 'consensus' | 'complete'>('analyzing');
   const [visibleDebates, setVisibleDebates] = useState(0);
@@ -293,6 +302,93 @@ export function AgentDebateModal({
                   <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3 mt-3">
                     <p className="text-xs text-yellow-200">
                       ⚡ Agents are considering your active features: <strong>{activeFeatures.map(f => f.name).join(', ')}</strong>
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* V5 Live Debate Stream (New Architecture) */}
+            {isV5Mode && v5State && v5State.debateTurns.length > 0 && (
+              <div className="space-y-4 mb-6">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span className="text-2xl">🎭</span>
+                  v5 Agent Debate ({v5State.debateTurns.length} turns)
+                  {v5State.progress < 100 && (
+                    <span className="ml-2 text-xs text-purple-400">
+                      Live • {Math.round(v5State.progress)}%
+                    </span>
+                  )}
+                </h3>
+                <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
+                  {v5State.debateTurns.map((turn, idx) => {
+                    const agentColors: Record<string, string> = {
+                      'HOOK_SMITH': 'from-orange-600 to-red-600',
+                      'STORY_WEAVER': 'from-blue-600 to-indigo-600',
+                      'PHONETIC_FLOW': 'from-green-600 to-teal-600',
+                      'ZEITGEIST': 'from-pink-600 to-purple-600',
+                      'STRUCTURE_GUARDIAN': 'from-yellow-600 to-orange-600',
+                      'JUDGE': 'from-purple-600 to-blue-600',
+                    };
+                    const agentIcons: Record<string, string> = {
+                      'HOOK_SMITH': '🎣',
+                      'STORY_WEAVER': '📖',
+                      'PHONETIC_FLOW': '🎵',
+                      'ZEITGEIST': '⚡',
+                      'STRUCTURE_GUARDIAN': '🏗️',
+                      'JUDGE': '⚖️',
+                    };
+                    const color = agentColors[turn.agent] || 'from-gray-600 to-gray-700';
+                    const icon = agentIcons[turn.agent] || '🤖';
+                    
+                    return (
+                      <div 
+                        key={idx}
+                        className={`bg-gradient-to-br ${color} bg-opacity-20 rounded-xl p-4 border border-white/20 animate-slideInUp`}
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-xl`}>
+                            {icon}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-bold text-white">{turn.agent.replace('_', ' ')}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                turn.type === 'observation' ? 'bg-blue-500/30 text-blue-200' :
+                                turn.type === 'challenge' || turn.type === 'counter' ? 'bg-orange-500/30 text-orange-200' :
+                                turn.type === 'proposal' || turn.type === 'agreement' ? 'bg-purple-500/30 text-purple-200' :
+                                'bg-gray-500/30 text-gray-200'
+                              }`}>
+                                {turn.type.toUpperCase()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-200">{turn.statement}</p>
+                            {turn.citedLines && turn.citedLines.length > 0 && (
+                              <div className="mt-2 text-xs text-gray-400">
+                                📍 Referenced lines: {turn.citedLines.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* War Room Button */}
+                {v5State.progress >= 100 && onOpenWarRoom && (
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={onOpenWarRoom}
+                      className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white px-6 py-3 rounded-full font-bold text-sm transition-all hover:scale-105 shadow-lg flex items-center gap-2 mx-auto"
+                    >
+                      <span className="text-xl">🎖️</span>
+                      Enter War Room
+                      <span className="text-xl">→</span>
+                    </button>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Review and approve the execution plan
                     </p>
                   </div>
                 )}
